@@ -1,5 +1,5 @@
 ---
-title: "Dissertation - Data Analysis: Study 1"
+title: "A multidimensional study of articulation deficits in Parkinson’s disease - Data Analysis: Study 1"
 ---
 
 ```{r}
@@ -57,7 +57,10 @@ speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
     between(Rating_M, 70, 84.99) ~ "Moderate",
     between(Rating_M, 45, 69.99) ~ "Severe",
     Rating_M < 45 ~ "Profound"
-  ))
+  )) %>%
+  
+  # Removing the MoCA Scores - Not all speakers had them
+  dplyr::select(!MoCA)
 ```
 
 ### Summaries
@@ -159,7 +162,7 @@ speakerList %>%
   ## Male Speakers
   gt::summary_rows(
     groups = "Male Speakers",
-    columns = c(Age, MoCA, Rating_M),
+    columns = c(Age, Rating_M),
     fns = list(
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
@@ -170,7 +173,7 @@ speakerList %>%
   ## Female Speakers
   gt::summary_rows(
     groups = "Female Speakers",
-    columns = c(Age, MoCA, Rating_M),
+    columns = c(Age, Rating_M),
     fns = list(
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
@@ -178,13 +181,6 @@ speakerList %>%
     fmt = list(~ gt::fmt_number(., decimals = 2))
   ) %>%
   
-  # Adding footnote to MoCA
-  gt::tab_footnote(
-    footnote = "The participant data for MoCA scores is incomplete due to the introduction of the MoCA assessment halfway through the multi-year data collection period, resulting in a partial availability of MoCA scores.",
-    locations = gt::cells_column_labels(
-      columns = MoCA
-    )
-  ) %>%
   
   # Adding footnote to Intelligibility
   gt::tab_footnote(
@@ -269,7 +265,7 @@ speakerList %>%
   ## Male Speakers
   gt::summary_rows(
     groups = "Male Speakers",
-    columns = c(Age, dxTime, MoCA, Rating_M),
+    columns = c(Age, dxTime, Rating_M),
     fns = list(
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
@@ -280,20 +276,12 @@ speakerList %>%
   ## Female Speakers
   gt::summary_rows(
     groups = "Female Speakers",
-    columns = c(Age, dxTime, MoCA, Rating_M),
+    columns = c(Age, dxTime, Rating_M),
     fns = list(
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
     ),
     fmt = list(~ gt::fmt_number(., decimals = 2))
-  ) %>%
-  
-    # Adding footnote to MoCA
-  gt::tab_footnote(
-    footnote = "The participant data for MoCA scores is incomplete due to the introduction of the MoCA assessment halfway through the multi-year data collection period, resulting in a partial availability of MoCA scores.",
-    locations = gt::cells_column_labels(
-      columns = MoCA
-    )
   ) %>%
   
   # Adding footnote to Intelligibility
@@ -316,10 +304,11 @@ speakerList %>%
   gt::tab_options(row_group.as_column = TRUE) %>%
   
   # Saving the table
-  gt::gtsave(filename = "SpeakerDemo_PD.docx",
+  gt::gtsave(filename = "SpeakerDemo_PD.html",
              path = "Data/Tables")
 
 ```
+
 ## Listener Descriptions
 ```{r}
 listenerRatings <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv")
@@ -865,16 +854,17 @@ The first study examines group differences between PD and HC for the following m
 (1) Intelligibility
 (2) Articulatory Precision
 (3) Acoustic Distance
-(4) Kinematic Distance
-(5) Acoustic VSA
-(6) Kinematic VSA
-(7) F2 Slope
-(8) dTB Speed
-(9) Jaw Speed
+(4) dTB Distance
+(5) Jaw Distance
+(6) Acoustic VSA
+(7) Kinematic VSA
+(8) F2 Slope
+(9) dTB Speed
+(10) Jaw Speed
 
 Alpha will be evaluated at the bonferonni corrected level of 0.0055.
 ```{r}
-alpha_s1 <- .05/9
+alpha_s1 <- .05/10
 
 # Prepping the model folders to be saved
 dir.create(path = "Data/Models/",showWarnings = F)
@@ -886,10 +876,13 @@ dir.create(path = "Data/Models/Study 1",showWarnings = F)
 ```{r}
 perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!V1) %>%
-  dplyr::filter(condition == "conv") %>%
   dplyr::filter(ratingType == "Int") %>%
   dplyr::rename(Int = Rating) %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
 
 modelData <- perceptualMeasures
 
@@ -909,10 +902,10 @@ summary(Int_m0)
 
 ```
 
-M1 - Group
+M1 - Condition
 ```{r}
 # Building the model
-Int_m1 <- lmerTest::lmer(Int ~ Group +
+Int_m1 <- lmerTest::lmer(Int ~ condition +
                            (1 | ListenerID) +
                            (1 | StudyID),
                          data = modelData)
@@ -923,15 +916,15 @@ summary(Int_m1)
 anova(Int_m0, Int_m1)
 
 # Print the APA 7 Results
-apa_lmeResults(Int_m1, "GroupPD")
+apa_lmeResults(Int_m1, "(Intercept)")
 apa_levelDescriptives(modelData, "HC", outcome= "Int")
 apa_levelDescriptives(modelData, "PD", outcome= "Int")
 ```
-M2 - Sex
+M2 - Condition*Group
 ```{r}
 # Building the model
 Int_m2 <- lmerTest::lmer(Int ~ 
-                           Sex +
+                           condition*Group +
                            (1 | ListenerID) +
                            (1 | StudyID),
                          data = modelData)
@@ -942,15 +935,15 @@ summary(Int_m2)
 anova(Int_m1, Int_m2)
 
 # Print the APA 7 Results
-apa_lmeResults(Int_m2, "SexF")
+#apa_lmeResults(Int_m2, "SexF")
 apa_levelDescriptives(modelData, "F", outcome= "Int")
 apa_levelDescriptives(modelData, "M", outcome= "Int")
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-Int_m3 <- lmerTest::lmer(Int ~ Group*Sex +
+Int_m3 <- lmerTest::lmer(Int ~ condition*Group*Sex +
                            (1 | ListenerID) +
                            (1 | StudyID),
                          data = modelData)
@@ -960,15 +953,15 @@ summary(Int_m3)
 # Perform likelihood ratio test
 anova(Int_m2, Int_m3)
 
-emms_group <- emmeans(Int_m3, ~ Group)
-emms_sex <- emmeans(Int_m3, ~ Sex)
-emms_sexGroup <- emmeans(Int_m3, ~ Group | Sex)
 
-# Compare EMMs for Group and Sex
-pairs(emms_group)
-pairs(emms_sex)
-pairs(emms_sexGroup)
-summary(emms_sexGroup)
+emms_Group_sexCondition <- emmeans(Int_m3, ~ Group | Sex*condition)
+emms_condition <- emmeans(Int_m3, ~ condition | Sex*Group)
+
+# Compare EMMs
+pairs(emms_Group_sexCondition)
+summary(emms_Group_sexCondition)
+
+pairs(emms_condition)
 
 apaResults(Int_m3, "GroupPD:SexF")
 apa_levelDescriptives(modelData, "PD_M", outcome= "Int")
@@ -987,14 +980,12 @@ Int_finalModel <- Int_m3
 summary(Int_finalModel)
 
 # Compute EMMs for Group and Sex
-emms_group <- emmeans(Int_finalModel, ~ Group)
-emms_sex <- emmeans(Int_finalModel, ~ Sex)
-emms_sexGroup <- emmeans(Int_finalModel, ~ Group | Sex)
+emms_group <- emmeans(Int_finalModel, ~ Group | Sex*condition)
+emms_condition <- emmeans(Int_finalModel, ~ condition | Sex*Group)
 
 # Compare EMMs for Group and Sex
 pairs(emms_group)
-pairs(emms_sex)
-pairs(emms_sexGroup)
+pairs(emms_condition)
 
 # Saving the model
 base::saveRDS(
@@ -1011,10 +1002,14 @@ rm(modelData)
 ```{r}
 perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!V1) %>%
-  dplyr::filter(condition == "conv") %>%
+  #dplyr::filter(condition == "conv") %>%
   dplyr::filter(ratingType == "AP") %>%
   dplyr::rename(AP = Rating) %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
 
 modelData <- perceptualMeasures
 
@@ -1034,10 +1029,10 @@ summary(AP_m0)
 
 ```
 
-M1 - Group
+M1 - Condition
 ```{r}
 # Building the model
-AP_m1 <- lmerTest::lmer(AP ~ Group +
+AP_m1 <- lmerTest::lmer(AP ~ condition +
                            (1 | ListenerID) +
                            (1 | StudyID),
                          data = modelData)
@@ -1047,18 +1042,13 @@ summary(AP_m1)
 # Perform likelihood ratio test
 anova(AP_m0, AP_m1)
 
-# Print the APA 7 Results
-apa_lmeResults(AP_m1, "GroupPD")
-apa_levelDescriptives(modelData, level = "HC", outcome = "AP")
-apa_levelDescriptives(modelData, level = "PD", outcome = "AP")
-
 ```
 
-M2 - Sex
+M2 - Condition*Group
 ```{r}
 # Building the model
 AP_m2 <- lmerTest::lmer(AP ~
-                           Sex +
+                           condition*Group +
                            (1 | ListenerID) +
                            (1 | StudyID),
                          data = modelData)
@@ -1066,18 +1056,14 @@ AP_m2 <- lmerTest::lmer(AP ~
 summary(AP_m2)
 
 # Perform likelihood ratio test
-#anova(AP_m1, AP_m2)
+anova(AP_m1, AP_m2)
 
-# Print the APA 7 Results
-apa_lmeResults(AP_m2, "SexF")
-apa_levelDescriptives(modelData, level = "M", outcome = "AP")
-apa_levelDescriptives(modelData, level = "F", outcome = "AP")
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-AP_m3 <- lmerTest::lmer(AP ~ Group*Sex +
+AP_m3 <- lmerTest::lmer(AP ~ condition*Group*Sex +
                            (1 | ListenerID) +
                            (1 | StudyID),
                          data = modelData)
@@ -1085,34 +1071,22 @@ AP_m3 <- lmerTest::lmer(AP ~ Group*Sex +
 summary(AP_m3)
 
 # Perform likelihood ratio test
-#anova(AP_m2, AP_m3)
-
-# Compute EMMs for Group and Sex
-emms_group <- emmeans(AP_m3, ~ Group)
-emms_sex <- emmeans(AP_m3, ~ Sex)
-emms_sexGroup <- emmeans(AP_m3, ~ Group | Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_group)
-pairs(emms_sex)
-pairs(emms_sexGroup)
-
-# APA 7 Reporting
-apaResults(AP_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome = "AP")
-apa_levelDescriptives(modelData, "HC_M", outcome = "AP")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome = "AP")
-apa_levelDescriptives(modelData, "HC_F", outcome = "AP")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
+anova(AP_m2, AP_m3)
 ```
 
 #### Final Model
 ```{r}
-AP_finalModel <- AP_m2
+AP_finalModel <- AP_m3
 
 summary(AP_finalModel)
+
+# Compute EMMs for Group and Sex
+emms_group <- emmeans(AP_finalModel, ~ Group | Sex*condition)
+emms_condition <- emmeans(AP_finalModel, ~ condition | Sex*Group)
+
+# Compare EMMs for Group and Sex
+pairs(emms_group)
+pairs(emms_condition)
 
 # Saving the model
 base::saveRDS(
@@ -1130,8 +1104,12 @@ rm(modelData)
 ### 3. aVSA
 ```{r}
 vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  dplyr::filter(condition == "conv") %>%
+  #dplyr::filter(condition == "conv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")),
                 aVSA = aVSA/1000)
 
 modelData <- vsaMeasures
@@ -1150,10 +1128,10 @@ summary(aVSA_m0)
 
 ```
 
-M1 - Group
+M1 - Condition
 ```{r}
 # Building the model
-aVSA_m1 <- stats::lm(aVSA ~ Group,
+aVSA_m1 <- stats::lm(aVSA ~ condition,
                          data = modelData)
 # Model summary
 summary(aVSA_m1)
@@ -1161,61 +1139,44 @@ summary(aVSA_m1)
 # Perform likelihood ratio test
 anova(aVSA_m0, aVSA_m1)
 
-# Print the APA 7 Results
-apa_lmResults(aVSA_m1, "GroupPD")
-apa_levelDescriptives(modelData, "HC", outcome= "aVSA")
-apa_levelDescriptives(modelData, "PD", outcome= "aVSA")
 ```
-M2 - Sex
+M2 - Condition*Group
 ```{r}
 # Building the model
-aVSA_m2 <- stats::lm(aVSA ~ Sex,
+aVSA_m2 <- stats::lm(aVSA ~ condition*Group,
                          data = modelData)
 # Model summary
 summary(aVSA_m2)
 
 # Perform likelihood ratio test
 anova(aVSA_m1, aVSA_m2)
-
-# Print the APA 7 Results
-apa_lmResults(aVSA_m2, "SexF")
-apa_levelDescriptives(modelData, "F", outcome= "aVSA")
-apa_levelDescriptives(modelData, "M", outcome= "aVSA")
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-aVSA_m3 <- stats::lm(aVSA ~ Group*Sex,
+aVSA_m3 <- stats::lm(aVSA ~ condition*Group*Sex,
                          data = modelData)
 # Model summary
 summary(aVSA_m3)
 
 # Perform likelihood ratio test
 anova(aVSA_m2, aVSA_m3)
-
-# Compute EMMs for Group and Sex
-emms_sexGroup <- emmeans(aVSA_m3, ~ Group | Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_sexGroup)
-
-# APA 7 Reporting
-apa_lmResults(aVSA_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome = "aVSA")
-apa_levelDescriptives(modelData, "HC_M", outcome = "aVSA")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome = "aVSA")
-apa_levelDescriptives(modelData, "HC_F", outcome = "aVSA")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
 ```
 
 #### Final Model
 ```{r}
-aVSA_finalModel <- aVSA_m3
+aVSA_finalModel <- aVSA_m2
 
 summary(aVSA_finalModel)
+
+# Compute EMMs for Group and Sex
+emms_group <- emmeans(aVSA_finalModel, ~ Group | condition)
+emms_condition <- emmeans(aVSA_finalModel, ~ condition | Group)
+
+# Compare EMMs for Group and Sex
+pairs(emms_group)
+pairs(emms_condition)
 
 # Saving the model
 base::saveRDS(
@@ -1230,8 +1191,12 @@ rm(modelData)
 ### 4. Aco Distance
 ```{r}
 aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::filter(condition == "conv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+  #dplyr::filter(condition == "conv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
 
 modelData <- aiMeasures
 
@@ -1250,10 +1215,10 @@ summary(acoDistance_m0)
 
 ```
 
-M1 - Group
+M1 - Condition
 ```{r}
 # Building the model
-acoDistance_m1 <- lmerTest::lmer(acoDistance ~ Group + duration +
+acoDistance_m1 <- lmerTest::lmer(acoDistance ~ condition +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1262,15 +1227,11 @@ summary(acoDistance_m1)
 # Perform likelihood ratio test
 anova(acoDistance_m0, acoDistance_m1)
 
-# Print the APA 7 Results
-apa_lmeResults(acoDistance_m1, "GroupPD")
-apa_levelDescriptives(modelData, level = "HC", outcome = "acoDistance")
-apa_levelDescriptives(modelData, level = "PD", outcome = "acoDistance")
 ```
-M2 - Sex
+M2 - condition*Group
 ```{r}
 # Building the model
-acoDistance_m2 <- lmerTest::lmer(acoDistance ~ Sex +
+acoDistance_m2 <- lmerTest::lmer(acoDistance ~ condition*Group +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1278,17 +1239,12 @@ summary(acoDistance_m2)
 
 # Perform likelihood ratio test
 anova(acoDistance_m1, acoDistance_m2)
-
-# Print the APA 7 Results
-apa_lmeResults(acoDistance_m2, "SexF")
-apa_levelDescriptives(modelData, level = "F", outcome = "acoDistance")
-apa_levelDescriptives(modelData, level = "M", outcome = "acoDistance")
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-acoDistance_m3 <- lmerTest::lmer(acoDistance ~ Group*Sex +
+acoDistance_m3 <- lmerTest::lmer(acoDistance ~ condition*Group*Sex +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1296,29 +1252,21 @@ summary(acoDistance_m3)
 
 # Perform likelihood ratio test
 anova(acoDistance_m2, acoDistance_m3)
-
-# Compute EMMs for Group and Sex
-emms_sexGroup <- emmeans(acoDistance_m3, ~ Group | Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_sexGroup)
-
-# APA 7 Reporting
-apaResults(acoDistance_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome = "acoDistance")
-apa_levelDescriptives(modelData, "HC_M", outcome = "acoDistance")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome = "acoDistance")
-apa_levelDescriptives(modelData, "HC_F", outcome = "acoDistance")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
 ```
 
 #### Final Model
 ```{r}
-acoDistance_finalModel <- acoDistance_m2
+acoDistance_finalModel <- acoDistance_m3
 
 summary(acoDistance_finalModel)
+
+# Compute EMMs for Group and Sex
+emms_group <- emmeans(acoDistance_finalModel, ~ Group | Sex*condition)
+emms_condition <- emmeans(acoDistance_finalModel, ~ condition | Sex*Group)
+
+# Compare EMMs for Group and Sex
+pairs(emms_group)
+pairs(emms_condition)
 
 # Saving the model
 base::saveRDS(
