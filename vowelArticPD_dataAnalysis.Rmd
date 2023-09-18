@@ -215,7 +215,7 @@ speakerList %>%
   gt::cols_hide(columns = c(dxTime,Severity)) %>%
   
   # Saving the table
-  gt::gtsave(filename = "SpeakerDemo_HC.docx",
+  gt::gtsave(filename = "SpeakerDemo_HC.html",
              path = "Data/Tables")
 ```
 
@@ -864,7 +864,7 @@ The first study examines group differences between PD and HC for the following m
 
 Alpha will be evaluated at the bonferonni corrected level of 0.0055.
 ```{r}
-alpha_s1 <- .05/10
+alpha_s1 <- .05/8
 
 # Prepping the model folders to be saved
 dir.create(path = "Data/Models/",showWarnings = F)
@@ -963,14 +963,6 @@ summary(emms_Group_sexCondition)
 
 pairs(emms_condition)
 
-apaResults(Int_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome= "Int")
-apa_levelDescriptives(modelData, "HC_M", outcome= "Int")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome= "Int")
-apa_levelDescriptives(modelData, "HC_F", outcome= "Int")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
 ```
 
 #### Final Model
@@ -1121,8 +1113,10 @@ rm(vsaMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-aVSA_m0 <- stats::lm(aVSA ~ 1,
+aVSA_m0 <- lmerTest::lmer(aVSA ~ 1 +
+                       (1 | StudyID),
                      data = modelData)
+
 # Model summary
 summary(aVSA_m0)
 
@@ -1131,8 +1125,9 @@ summary(aVSA_m0)
 M1 - Condition
 ```{r}
 # Building the model
-aVSA_m1 <- stats::lm(aVSA ~ condition,
-                         data = modelData)
+aVSA_m1 <- lmerTest::lmer(aVSA ~ condition +
+                       (1 | StudyID),
+                     data = modelData)
 # Model summary
 summary(aVSA_m1)
 
@@ -1143,8 +1138,9 @@ anova(aVSA_m0, aVSA_m1)
 M2 - Condition*Group
 ```{r}
 # Building the model
-aVSA_m2 <- stats::lm(aVSA ~ condition*Group,
-                         data = modelData)
+aVSA_m2 <- lmerTest::lmer(aVSA ~ condition*Group +
+                       (1 | StudyID),
+                     data = modelData)
 # Model summary
 summary(aVSA_m2)
 
@@ -1155,8 +1151,9 @@ anova(aVSA_m1, aVSA_m2)
 M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-aVSA_m3 <- stats::lm(aVSA ~ condition*Group*Sex,
-                         data = modelData)
+aVSA_m3 <- lmerTest::lmer(aVSA ~ condition*Group*Sex +
+                       (1 | StudyID),
+                     data = modelData)
 # Model summary
 summary(aVSA_m3)
 
@@ -1166,13 +1163,13 @@ anova(aVSA_m2, aVSA_m3)
 
 #### Final Model
 ```{r}
-aVSA_finalModel <- aVSA_m2
+aVSA_finalModel <- aVSA_m3
 
 summary(aVSA_finalModel)
 
 # Compute EMMs for Group and Sex
-emms_group <- emmeans(aVSA_finalModel, ~ Group | condition)
-emms_condition <- emmeans(aVSA_finalModel, ~ condition | Group)
+emms_group <- emmeans(aVSA_finalModel, ~ Group | Sex*condition)
+emms_condition <- emmeans(aVSA_finalModel, ~ condition | Sex*Group)
 
 # Compare EMMs for Group and Sex
 pairs(emms_group)
@@ -1282,7 +1279,6 @@ rm(modelData)
 ### 5. F2 Slope
 ```{r}
 aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::filter(condition == "conv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
 
 modelData <- aiMeasures
@@ -1302,10 +1298,10 @@ summary(F2_Slope_m0)
 
 ```
 
-M1 - Group
+M1 - condition
 ```{r}
 # Building the model
-F2_Slope_m1 <- lmerTest::lmer(F2_Slope ~ Group +
+F2_Slope_m1 <- lmerTest::lmer(F2_Slope ~ condition +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1313,16 +1309,11 @@ summary(F2_Slope_m1)
 
 # Perform likelihood ratio test
 anova(F2_Slope_m0, F2_Slope_m1)
-
-# Print the APA 7 Results
-apa_lmeResults(F2_Slope_m1, "GroupPD")
-apa_levelDescriptives(modelData, level = "HC", outcome = "F2_Slope")
-apa_levelDescriptives(modelData, level = "PD", outcome = "F2_Slope")
 ```
-M2 - Sex
+M2 - condition*Group
 ```{r}
 # Building the model
-F2_Slope_m2 <- lmerTest::lmer(F2_Slope ~ Sex +
+F2_Slope_m2 <- lmerTest::lmer(F2_Slope ~ condition*Group +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1331,16 +1322,12 @@ summary(F2_Slope_m2)
 # Perform likelihood ratio test
 anova(F2_Slope_m1, F2_Slope_m2)
 
-# Print the APA 7 Results
-apa_lmeResults(F2_Slope_m2, "SexF")
-apa_levelDescriptives(modelData, level = "F", outcome = "F2_Slope")
-apa_levelDescriptives(modelData, level = "M", outcome = "F2_Slope")
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-F2_Slope_m3 <- lmerTest::lmer(F2_Slope ~ Group*Sex +
+F2_Slope_m3 <- lmerTest::lmer(F2_Slope ~ condition*Group*Sex +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1348,17 +1335,6 @@ summary(F2_Slope_m3)
 
 # Perform likelihood ratio test
 anova(F2_Slope_m2, F2_Slope_m3)
-
-# Compute EMMs for Group and Sex
-emms_group <- emmeans(F2_Slope_m3, ~ Group)
-emms_sex <- emmeans(F2_Slope_m3, ~ Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_group)
-pairs(emms_sex)
-
-# APA 7 Reporting
-apaResults(F2_Slope_m3, "GroupPD:SexF")
 ```
 
 #### Final Model
@@ -1384,7 +1360,6 @@ rm(modelData)
 
 ```{r}
 vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  dplyr::filter(condition == "conv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
 
 modelData <- vsaMeasures
@@ -1406,40 +1381,30 @@ summary(kVSA_m0)
 M1 - Group
 ```{r}
 # Building the model
-kVSA_m1 <- stats::lm(kVSA ~ Group,
+kVSA_m1 <- stats::lm(kVSA ~ condition,
                          data = modelData)
 # Model summary
 summary(kVSA_m1)
 
 # Perform likelihood ratio test
 anova(kVSA_m0, kVSA_m1)
-
-# APA 7 Reporting
-apa_lmResults(kVSA_m1, "GroupPD")
-apa_levelDescriptives(modelData, "PD", outcome = "kVSA")
-apa_levelDescriptives(modelData, "HC", outcome = "kVSA")
 ```
-M2 - Sex
+M2 - Condition*Group
 ```{r}
 # Building the model
-kVSA_m2 <- stats::lm(kVSA ~ Sex,
+kVSA_m2 <- stats::lm(kVSA ~ condition*Group,
                          data = modelData)
 # Model summary
 summary(kVSA_m2)
 
 # Perform likelihood ratio test
 anova(kVSA_m1, kVSA_m2)
-
-# APA 7 Reporting
-apa_lmResults(kVSA_m2, "SexF")
-apa_levelDescriptives(modelData, level = "F", outcome = "kVSA")
-apa_levelDescriptives(modelData, level = "M", outcome = "kVSA")
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-kVSA_m3 <- stats::lm(kVSA ~ Group*Sex,
+kVSA_m3 <- stats::lm(kVSA ~ condition*Group*Sex,
                          data = modelData)
 # Model summary
 summary(kVSA_m3)
@@ -1447,21 +1412,6 @@ summary(kVSA_m3)
 # Perform likelihood ratio test
 anova(kVSA_m2, kVSA_m3)
 
-# Compute EMMs for Group and Sex
-emms_sexGroup <- emmeans(kVSA_m3, ~ Group | Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_sexGroup)
-
-# APA 7 Reporting
-apa_lmResults(kVSA_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome = "kVSA")
-apa_levelDescriptives(modelData, "HC_M", outcome = "kVSA")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome = "kVSA")
-apa_levelDescriptives(modelData, "HC_F", outcome = "kVSA")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
 ```
 
 #### Final Model
@@ -1484,7 +1434,6 @@ rm(modelData)
 ### 7. Kin Distance
 ```{r}
 aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::filter(condition == "conv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
 
 modelData <- aiMeasures
