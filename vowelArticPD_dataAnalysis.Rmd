@@ -13,6 +13,7 @@ library(emmeans)
 library(ggpubr) # install.packages('ggpubr')
 library(plyr) # install.packages('plyr')
 library(beepr) # install.packages('beepr')
+library(plotrix) # install.packages('plotrix')
 source('Functions/MSL Tools.R')
 ```
 
@@ -363,16 +364,13 @@ listenerDemo %>%
 perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!1) %>%
   
-  # For study 1, we just need the Conversational data
-  dplyr::filter(condition == "conv") %>%
-  
   # Selecting only the data we need
-  dplyr::select(DatabaseID, Group, Sex, ratingType, Rating)
+  dplyr::select(DatabaseID, Group, Sex, condition, ratingType, Rating)
   
   ## By Sex
   perceptualMeasures_bySex <- perceptualMeasures %>%
     # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, ratingType) %>%
+    dplyr::group_by(Group, Sex, condition, ratingType) %>%
     dplyr::summarise(
       M = mean(Rating, na.rm = T),
       SD = sd(Rating, na.rm = T),
@@ -380,14 +378,14 @@ perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/Listener
     
     # Pivoting the data back to wide for the table
     tidyr::pivot_wider(
-      names_from = c(Group,Sex),
+      names_from = c(Group, condition),
       values_from = c(M,SD),
       )
   
   ## All Speakers
   perceptualMeasures_allSpeakers <- perceptualMeasures %>%
     # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, ratingType) %>%
+    dplyr::group_by(Group, condition, ratingType) %>%
     dplyr::summarise(
       M = mean(Rating, na.rm = T),
       SD = sd(Rating, na.rm = T),
@@ -395,15 +393,19 @@ perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/Listener
     
     # Pivoting the data back to wide for the table
     tidyr::pivot_wider(
-      names_from = c(Group),
+      names_from = c(Group, condition),
       values_from = c(M,SD),
-      )
+      ) %>%
+    
+    # Add "All Speakers" label to the Sex
+    dplyr::mutate(Sex = "All Speakers")
   
   
-  perceptualMeasures <- base::merge(
+  perceptualMeasures <- base::rbind(
     perceptualMeasures_allSpeakers,
     perceptualMeasures_bySex,
-    ) %>%
+    deparse.level = 1) %>%
+    dplyr::relocate(Sex, .before = ratingType) %>%
     dplyr::rename(Measure = ratingType)
   
   # Removing the unneeded items
@@ -415,9 +417,6 @@ perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/Listener
 
 # VSA Measures ----
 vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-    
-    # For study 1, we just need the Conversational data
-    dplyr::filter(condition == "conv") %>%
     
     # Converting aVSA from Hz to kHz, to make table cleaner
     dplyr::mutate(aVSA = aVSA / 1000) %>%
@@ -433,7 +432,7 @@ vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_
   ## By Sex
   vsaMeasures_bySex <- vsaMeasures %>%
     # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, Measure) %>%
+    dplyr::group_by(Group, Sex, condition, Measure) %>%
     dplyr::summarise(
       M = mean(Value, na.rm = T),
       SD = sd(Value, na.rm = T),
@@ -441,14 +440,14 @@ vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_
     
     # Pivoting the data back to wide for the table
     tidyr::pivot_wider(
-      names_from = c(Group,Sex),
+      names_from = c(Group,condition),
       values_from = c(M,SD),
       )
   
   ## All Speakers
   vsaMeasures_allSpeakers <- vsaMeasures %>%
     # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Measure) %>%
+    dplyr::group_by(Group, condition, Measure) %>%
     dplyr::summarise(
       M = mean(Value, na.rm = T),
       SD = sd(Value, na.rm = T),
@@ -456,14 +455,19 @@ vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_
     
     # Pivoting the data back to wide for the table
     tidyr::pivot_wider(
-      names_from = c(Group),
+      names_from = c(Group, condition),
       values_from = c(M,SD),
-      )
+      ) %>%
+    
+    # Add "All Speakers" label to the Sex
+    dplyr::mutate(Sex = "All Speakers")
 
-vsaMeasures <- base::merge(
+vsaMeasures <- base::rbind(
   vsaMeasures_allSpeakers,
   vsaMeasures_bySex,
-  )
+  deparse.level = 1
+  ) %>%
+  dplyr::relocate(Sex, .before = Measure)
 
   # Removing the unneeded items
   rm(
@@ -473,28 +477,25 @@ vsaMeasures <- base::merge(
 # /ai/ Measures ----
 aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
   
-  # For study 1, we just need the Conversational data
-  dplyr::filter(condition == "conv") %>%
-  
   # Selecting only the data we need
   dplyr::select(
     DatabaseID:Group,
+    condition,
     acoDistance,
     kinDistance,
     F2_Slope,
-    dTB_speedMax,
-    Jaw_speedMax,
+    TB_speedMax,
     ) %>%
   
   # Formatting for the table
-  tidyr::pivot_longer(cols = acoDistance:Jaw_speedMax,
+  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
                       names_to = "Measure",
                       values_to = "Value")
   
   ## By sex
   aiMeasures_bySex <- aiMeasures %>%
     # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, Measure) %>%
+    dplyr::group_by(Group, Sex, condition, Measure) %>%
     dplyr::summarise(
       M = mean(Value, na.rm = T),
       SD = sd(Value, na.rm = T),
@@ -502,14 +503,14 @@ aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_a
   
     # Pivoting the data back to wide for the table
     tidyr::pivot_wider(
-      names_from = c(Group,Sex),
+      names_from = c(Group,condition),
       values_from = c(M,SD),
       )
   
   ## All Speakers
   aiMeasures_allSpeakers <- aiMeasures %>%
     # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Measure) %>%
+    dplyr::group_by(Group, condition, Measure) %>%
     dplyr::summarise(
       M = mean(Value, na.rm = T),
       SD = sd(Value, na.rm = T),
@@ -517,14 +518,19 @@ aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_a
   
     # Pivoting the data back to wide for the table
     tidyr::pivot_wider(
-      names_from = c(Group),
+      names_from = c(Group, condition),
       values_from = c(M,SD),
-      )
+      ) %>%
   
-  aiMeasures <- base::merge(
+    # Add "All Speakers" label to the Sex
+    dplyr::mutate(Sex = "All Speakers")
+  
+  aiMeasures <- base::rbind(
     aiMeasures_allSpeakers,
     aiMeasures_bySex,
-    )
+    deparse.level = 1
+    ) %>%
+    dplyr::relocate(Sex, .before = Measure)
   
   
   # Removing the unneeded items
@@ -534,14 +540,13 @@ aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_a
   
   
 # All Measures ----
-
-s1_descriptivesData <- base::rbind(
+descriptivesData <- base::rbind(
   perceptualMeasures,
   vsaMeasures,
   aiMeasures,
   deparse.level = 1
 ) %>%
-    dplyr::mutate_at(vars(-Measure), round, digits = 2) %>%
+    dplyr::mutate_at(vars(-c(Sex,Measure)), round, digits = 2) %>%
     dplyr::mutate(Measure = factor(
       Measure,
       levels = c(
@@ -553,6 +558,7 @@ s1_descriptivesData <- base::rbind(
         "kVSA",
         "kinDistance",
         "dTB_speedMax",
+        "TB_speedMax",
         "Jaw_speedMax"
        ),
        labels = c(
@@ -564,108 +570,115 @@ s1_descriptivesData <- base::rbind(
          "Kinematic VSA (mm^2)",
          "Kinematic Distance (mm)",
          "dTB Peak Speed (mm/s)",
+         "TB Peak Speed (mm/s)",
          "Jaw Peak Speed (mm/s)"
-         ))) %>%
+         )),
+        Sex = factor(Sex,
+                             levels = c(
+                               "All Speakers",
+                               "M",
+                               "F"),
+                             labels = c(
+                               "All Speakers",
+                               "Male Speakers",
+                               "Female Speakers"))) %>%
     dplyr::arrange(Measure) %>%
     dplyr::select(
-      Measure,
-      M_HC, SD_HC, M_PD, SD_PD,
-      M_HC_M, SD_HC_M, M_PD_M, SD_PD_M,
-      M_HC_F, SD_HC_F, M_PD_F, SD_PD_F,
+      Sex, Measure,
+      M_HC_conv, SD_HC_conv, M_PD_conv, SD_PD_conv,
+      M_HC_lessClear, SD_HC_lessClear, M_PD_lessClear, SD_PD_lessClear,
+      M_HC_moreClear, SD_HC_moreClear, M_PD_moreClear, SD_PD_moreClear,
     )
   
   # Creating the GT table
-  s1_descriptivesTable <- s1_descriptivesData %>%
-    gt::gt() %>%
+  descriptivesTable <- descriptivesData %>%
+    gt::gt(
+      rowname_col = "Measure",
+      groupname_col = "Sex") %>%
     gt::tab_header(
-      title = "Study 1: Descriptive Statistics",
-      subtitle = "The target measures for study 1, presented for Male, Female, and all speakers."
+      title = "Study 2: Descriptive Statistics",
+      subtitle = "The target measures for study 2, presented for Conv, Less Clear, and More Clear speaking conditions."
       ) %>%
-    # Labeling Kinematic Measures
-      gt::tab_row_group(
-        label = "Kinematic Measures",
-        rows = c(6:9)
-        ) %>%
-    # Labeling Acoustic Measures
-      gt::tab_row_group(
-        label = "Acoustic Measures",
-        rows = c(3:5)
-        ) %>%
-    # Labeling Perceptual Measures
-      gt::tab_row_group(
-        label = "Perceptual Measures",
-        rows = c(1:2)
-        ) %>%
   # Spanner 1: PD Speakers
   gt::tab_spanner(
     label = "PD",
     level = 1,
     gather = FALSE,
-    columns = c(M_PD, SD_PD,
-                M_PD_M, SD_PD_M,
-                M_PD_F, SD_PD_F)
+    columns = c(M_PD_conv, SD_PD_conv,
+                M_PD_lessClear, SD_PD_lessClear,
+                M_PD_moreClear, SD_PD_moreClear)
   ) %>%
   # Spanner 1: HC Speakers
   gt::tab_spanner(
     label = "HC",
     level = 1,
     gather = FALSE,
-    columns = c(M_HC, SD_HC,
-                M_HC_M, SD_HC_M,
-                M_HC_F, SD_HC_F)
+    columns = c(M_HC_conv, SD_HC_conv,
+                M_HC_lessClear, SD_HC_lessClear,
+                M_HC_moreClear, SD_HC_moreClear)
   ) %>%
-  # Spanner 2: All Speakers
+  # Spanner 2: Conversational
   gt::tab_spanner(
-    label = "All Speakers",
+    label = "Conversational",
     level = 2,
     gather = TRUE,
-    columns = c(M_HC, SD_HC,M_PD, SD_PD)
+    columns = c(M_HC_conv,
+                SD_HC_conv,
+                M_PD_conv,
+                SD_PD_conv)
   ) %>%
-  # Spanner 2: Male Speakers
+  # Spanner 2: Less Clear
   gt::tab_spanner(
-    label = "Male Speakers",
+    label = "Less Clear",
     level = 2,
     gather = TRUE,
-    columns = c(M_HC_M, SD_HC_M,M_PD_M, SD_PD_M)
+    columns = c(M_HC_lessClear,
+                SD_HC_lessClear,
+                M_PD_lessClear,
+                SD_PD_lessClear)
   ) %>%
-  # Spanner 2: Female Speakers
+  # Spanner 2: More Clear
   gt::tab_spanner(
-    label = "Female Speakers",
+    label = "More Clear",
     level = 2,
     gather = TRUE,
-    columns = c(M_HC_F, SD_HC_F,M_PD_F, SD_PD_F)
+    columns = c(M_HC_moreClear,
+                SD_HC_moreClear,
+                M_PD_moreClear,
+                SD_PD_moreClear)
   ) %>%
   gt::cols_label(
-    M_HC = "M",
-    SD_HC = "SD",
-    M_PD = "M",
-    SD_PD = "SD",
-    M_HC_M = "M",
-    SD_HC_M = "SD",
-    M_PD_M = "M",
-    SD_PD_M = "SD",
-    M_HC_F = "M",
-    SD_HC_F = "SD",
-    M_PD_F = "M",
-    SD_PD_F = "SD"
+    M_HC_conv = "M",
+    SD_HC_conv = "SD",
+    M_PD_conv = "M",
+    SD_PD_conv = "SD",
+    M_HC_lessClear = "M",
+    SD_HC_lessClear = "SD",
+    M_PD_lessClear = "M",
+    SD_PD_lessClear = "SD",
+    M_HC_moreClear = "M",
+    SD_HC_moreClear = "SD",
+    M_PD_moreClear = "M",
+    SD_PD_moreClear = "SD"
   ) %>%
     
     # Align the measure labels to the right
     gt::cols_align(
       align = c("right"),
       columns = Measure
-      )
+      ) %>%
+  gt::tab_options(row_group.as_column = FALSE)
   
   # Save as HTML
   gt::gtsave(
-    data = s1_descriptivesTable,
-    filename = "Data/Tables/s1_descriptivesTable.html"
+    data = descriptivesTable,
+    filename = "Data/Tables/descriptivesTable.html"
     )
   
   # Save as .docx
   gt::gtsave(
-    data = s1_descriptivesTable,
-    filename = "Data/Tables/s1_descriptivesTable.docx"
+    data = descriptivesTable,
+    filename = "Data/Tables/descriptivesTable.docx"
     )
 
     
@@ -854,13 +867,11 @@ The first study examines group differences between PD and HC for the following m
 (1) Intelligibility
 (2) Articulatory Precision
 (3) Acoustic Distance
-(4) dTB Distance
-(5) Jaw Distance
-(6) Acoustic VSA
-(7) Kinematic VSA
-(8) F2 Slope
-(9) dTB Speed
-(10) Jaw Speed
+(4) Kinematic Distance (TB Displacement)
+(5) Acoustic VSA
+(6) Kinematic VSA
+(7) F2 Slope
+(8) Kinematic Speed (TB Peak Speed)
 
 Alpha will be evaluated at the bonferonni corrected level of 0.0055.
 ```{r}
@@ -915,10 +926,6 @@ summary(Int_m1)
 # Perform likelihood ratio test
 anova(Int_m0, Int_m1)
 
-# Print the APA 7 Results
-apa_lmeResults(Int_m1, "(Intercept)")
-apa_levelDescriptives(modelData, "HC", outcome= "Int")
-apa_levelDescriptives(modelData, "PD", outcome= "Int")
 ```
 M2 - Condition*Group
 ```{r}
@@ -933,11 +940,6 @@ summary(Int_m2)
 
 # Perform likelihood ratio test
 anova(Int_m1, Int_m2)
-
-# Print the APA 7 Results
-#apa_lmeResults(Int_m2, "SexF")
-apa_levelDescriptives(modelData, "F", outcome= "Int")
-apa_levelDescriptives(modelData, "M", outcome= "Int")
 ```
 
 M3 - Condition*Group*Sex
@@ -952,16 +954,6 @@ summary(Int_m3)
 
 # Perform likelihood ratio test
 anova(Int_m2, Int_m3)
-
-
-emms_Group_sexCondition <- emmeans(Int_m3, ~ Group | Sex*condition)
-emms_condition <- emmeans(Int_m3, ~ condition | Sex*Group)
-
-# Compare EMMs
-pairs(emms_Group_sexCondition)
-summary(emms_Group_sexCondition)
-
-pairs(emms_condition)
 
 ```
 
@@ -1453,10 +1445,10 @@ summary(kinDistance_m0)
 
 ```
 
-M1 - Group
+M1 - Condition
 ```{r}
 # Building the model
-kinDistance_m1 <- lmerTest::lmer(kinDistance ~ Group +
+kinDistance_m1 <- lmerTest::lmer(kinDistance ~ condition +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1465,15 +1457,11 @@ summary(kinDistance_m1)
 # Perform likelihood ratio test
 anova(kinDistance_m0, kinDistance_m1)
 
-# APA 7 Reporting
-apa_lmeResults(kinDistance_m1, "GroupPD")
-apa_levelDescriptives(modelData, "PD", outcome = "kinDistance")
-apa_levelDescriptives(modelData, "HC", outcome = "kinDistance")
 ```
-M2 - Sex
+M2 - Condition*Group
 ```{r}
 # Building the model
-kinDistance_m2 <- lmerTest::lmer(kinDistance ~ Sex +
+kinDistance_m2 <- lmerTest::lmer(kinDistance ~ condition*Group +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1481,17 +1469,12 @@ summary(kinDistance_m2)
 
 # Perform likelihood ratio test
 anova(kinDistance_m1, kinDistance_m2)
-
-# APA 7 Reporting
-apa_lmeResults(kinDistance_m2, "SexF")
-apa_levelDescriptives(modelData, "F", outcome = "kinDistance")
-apa_levelDescriptives(modelData, "M", outcome = "kinDistance")
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-kinDistance_m3 <- lmerTest::lmer(kinDistance ~ Group*Sex +
+kinDistance_m3 <- lmerTest::lmer(kinDistance ~ condition*Group*Sex +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1500,26 +1483,11 @@ summary(kinDistance_m3)
 # Perform likelihood ratio test
 anova(kinDistance_m2, kinDistance_m3)
 
-# Compute EMMs for Group and Sex
-emms_sexGroup <- emmeans(kinDistance_m3, ~ Group | Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_sexGroup)
-
-# APA 7 Reporting
-apa_lmeResults(kinDistance_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome = "kinDistance")
-apa_levelDescriptives(modelData, "HC_M", outcome = "kinDistance")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome = "kinDistance")
-apa_levelDescriptives(modelData, "HC_F", outcome = "kinDistance")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
 ```
 
 #### Final Model
 ```{r}
-kinDistance_finalModel <- kinDistance_m1
+kinDistance_finalModel <- kinDistance_m2
 
 summary(kinDistance_finalModel)
 
@@ -1534,10 +1502,9 @@ rm(list=ls(pattern="^emms"))
 rm(modelData)
 ```
 
-### 8. dTB Speed Max
+### 8. TB Speed Max
 ```{r}
 aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::filter(condition == "conv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
 
 modelData <- aiMeasures
@@ -1549,88 +1516,63 @@ rm(aiMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-dTB_speedMax_m0 <- lmerTest::lmer(dTB_speedMax ~ 1 +
+TB_speedMax_m0 <- lmerTest::lmer(TB_speedMax ~ 1 +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
-summary(dTB_speedMax_m0)
+summary(TB_speedMax_m0)
 
 ```
 
-M1 - Group
+M1 - Condition
 ```{r}
 # Building the model
-dTB_speedMax_m1 <- lmerTest::lmer(dTB_speedMax ~ Group +
+TB_speedMax_m1 <- lmerTest::lmer(TB_speedMax ~ condition +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
-summary(dTB_speedMax_m1)
+summary(TB_speedMax_m1)
 
 # Perform likelihood ratio test
-anova(dTB_speedMax_m0, dTB_speedMax_m1)
+anova(TB_speedMax_m0, TB_speedMax_m1)
 
-# APA 7 Reporting
-apa_lmeResults(dTB_speedMax_m1, "GroupPD")
-apa_levelDescriptives(modelData, "PD", outcome = "dTB_speedMax")
-apa_levelDescriptives(modelData, "HC", outcome = "dTB_speedMax")
 ```
-M2 - Sex
+M2 - Condition*Group
 ```{r}
 # Building the model
-dTB_speedMax_m2 <- lmerTest::lmer(dTB_speedMax ~ Sex +
+TB_speedMax_m2 <- lmerTest::lmer(TB_speedMax ~ condition*Group +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
-summary(dTB_speedMax_m2)
+summary(TB_speedMax_m2)
 
 # Perform likelihood ratio test
-anova(dTB_speedMax_m1, dTB_speedMax_m2)
-
-# APA 7 Reporting
-apa_lmeResults(dTB_speedMax_m2, "SexF")
-apa_levelDescriptives(modelData, "F", outcome = "dTB_speedMax")
-apa_levelDescriptives(modelData, "M", outcome = "dTB_speedMax")
+anova(TB_speedMax_m1, TB_speedMax_m2)
 ```
 
-M3 - Group*Sex
+M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-dTB_speedMax_m3 <- lmerTest::lmer(dTB_speedMax ~ Group*Sex +
+TB_speedMax_m3 <- lmerTest::lmer(TB_speedMax ~ condition*Group*Sex +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
-summary(dTB_speedMax_m3)
+summary(TB_speedMax_m3)
 
 # Perform likelihood ratio test
 anova(dTB_speedMax_m2, dTB_speedMax_m3)
-
-# Compute EMMs for Group and Sex
-emms_sexGroup <- emmeans(dTB_speedMax_m3, ~ Group | Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_sexGroup)
-
-# APA 7 Reporting
-apa_lmeResults(dTB_speedMax_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome = "dTB_speedMax")
-apa_levelDescriptives(modelData, "HC_M", outcome = "dTB_speedMax")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome = "dTB_speedMax")
-apa_levelDescriptives(modelData, "HC_F", outcome = "dTB_speedMax")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
 ```
 
 #### Final Model
 ```{r}
-dTB_speedMax_finalModel <- dTB_speedMax_m1
+TB_speedMax_finalModel <- TB_speedMax_m1
 
-summary(dTB_speedMax_finalModel)
+summary(TB_speedMax_finalModel)
 
 # Saving the model
 base::saveRDS(
-  object = dTB_speedMax_finalModel,
-  file = "Data/Models/Study 1/dTB_speedMax_finalModel.rds")
+  object = TB_speedMax_finalModel,
+  file = "Data/Models/Study 1/TB_speedMax_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^dTB_speedMax_m"))
@@ -1638,110 +1580,6 @@ rm(list=ls(pattern="^emms"))
 rm(modelData)
 ```
 
-
-### 9. Jaw Speed Max
-```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::filter(condition == "conv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
-
-modelData <- aiMeasures
-
-# Taking out the trash
-rm(aiMeasures)
-```
-
-M0 - Fully unconditional model
-```{r}
-# Building the model
-Jaw_speedMax_m0 <- lmerTest::lmer(Jaw_speedMax ~ 1 +
-                           (1 | StudyID),
-                         data = modelData)
-# Model summary
-summary(Jaw_speedMax_m0)
-
-```
-
-M1 - Group
-```{r}
-# Building the model
-Jaw_speedMax_m1 <- lmerTest::lmer(Jaw_speedMax ~ Group +
-                           (1 | StudyID),
-                         data = modelData)
-# Model summary
-summary(Jaw_speedMax_m1)
-
-# Perform likelihood ratio test
-anova(Jaw_speedMax_m0, Jaw_speedMax_m1)
-
-# APA 7 Reporting
-apa_lmeResults(Jaw_speedMax_m1, "GroupPD")
-apa_levelDescriptives(modelData, "PD", outcome = "Jaw_speedMax")
-apa_levelDescriptives(modelData, "HC", outcome = "Jaw_speedMax")
-```
-M2 - Sex
-```{r}
-# Building the model
-Jaw_speedMax_m2 <- lmerTest::lmer(Jaw_speedMax ~ Sex +
-                           (1 | StudyID),
-                         data = modelData)
-# Model summary
-summary(Jaw_speedMax_m2)
-
-# Perform likelihood ratio test
-anova(Jaw_speedMax_m1, Jaw_speedMax_m2)
-
-# APA 7 Reporting
-apa_lmeResults(Jaw_speedMax_m2, "SexF")
-apa_levelDescriptives(modelData, "F", outcome = "Jaw_speedMax")
-apa_levelDescriptives(modelData, "M", outcome = "Jaw_speedMax")
-```
-
-M3 - Group*Sex
-```{r}
-# Building the model
-Jaw_speedMax_m3 <- lmerTest::lmer(Jaw_speedMax ~ Group*Sex +
-                           (1 | StudyID),
-                         data = modelData)
-# Model summary
-summary(Jaw_speedMax_m3)
-
-# Perform likelihood ratio test
-anova(Jaw_speedMax_m2, Jaw_speedMax_m3)
-
-# Compute EMMs for Group and Sex
-emms_sexGroup <- emmeans(Jaw_speedMax_m3, ~ Group | Sex)
-
-# Compare EMMs for Group and Sex
-pairs(emms_sexGroup)
-
-# APA 7 Reporting
-apa_lmeResults(Jaw_speedMax_m3, "GroupPD:SexF")
-apa_levelDescriptives(modelData, "PD_M", outcome = "Jaw_speedMax")
-apa_levelDescriptives(modelData, "HC_M", outcome = "Jaw_speedMax")
-apa_emmsPairs(pairs(emms_sexGroup), "M")
-
-apa_levelDescriptives(modelData, "PD_F", outcome = "Jaw_speedMax")
-apa_levelDescriptives(modelData, "HC_F", outcome = "Jaw_speedMax")
-apa_emmsPairs(pairs(emms_sexGroup), "F")
-```
-
-#### Final Model
-```{r}
-Jaw_speedMax_finalModel <- Jaw_speedMax_m1
-
-summary(Jaw_speedMax_finalModel)
-
-# Saving the model
-base::saveRDS(
-  object = Jaw_speedMax_finalModel,
-  file = "Data/Models/Study 1/Jaw_speedMax_finalModel.rds")
-
-# Taking out the trash
-rm(list=ls(pattern="^Jaw_speedMax_m"))
-rm(list=ls(pattern="^emms"))
-rm(modelData)
-```
 ## Study 1: Model Table
 ```{r}
 # Load in the models
@@ -1752,8 +1590,7 @@ acoDistance_finalModel <- readRDS(file = "Data/Models/Study 1/acoDistance_finalM
 F2_Slope_finalModel <- readRDS(file = "Data/Models/Study 1/F2_Slope_finalModel.rds")
 kVSA_finalModel <- readRDS(file = "Data/Models/Study 1/kVSA_finalModel.rds")
 kinDistance_finalModel <- readRDS(file = "Data/Models/Study 1/kinDistance_finalModel.rds")
-dTB_speedMax_finalModel <- readRDS(file = "Data/Models/Study 1/dTB_speedMax_finalModel.rds")
-Jaw_speedMax_finalModel <- readRDS(file = "Data/Models/Study 1/Jaw_speedMax_finalModel.rds")
+TB_speedMax_finalModel <- readRDS(file = "Data/Models/Study 1/TB_speedMax_finalModel.rds")
 
 # SJ Plot Tab Model
 sjPlot::tab_model(
@@ -1764,8 +1601,7 @@ sjPlot::tab_model(
   F2_Slope_finalModel,
   kVSA_finalModel,
   kinDistance_finalModel,
-  dTB_speedMax_finalModel,
-  Jaw_speedMax_finalModel,
+  TB_speedMax_finalModel,
   show.reflvl = T,
   file = "Data/Models/Study 1/Study 1_ModelTable.html"
 )
@@ -1971,7 +1807,7 @@ summaryTable %>%
 
 ```
 
-# Plots
+# Plots - Group Comparisons
 ```{r}
 myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
 color_HC <- myPal[2] 
@@ -1982,43 +1818,41 @@ color_PD <- myPal[6]
 ```{r}
 plot_Int <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!V1) %>%
-  dplyr::filter(condition == "conv") %>%
+  #dplyr::filter(condition == "conv") %>%
   dplyr::filter(ratingType == "Int") %>%
   dplyr::rename(Int = Rating) %>%
   dplyr::mutate(Sex = factor(Sex,
                              levels = c("M",
                                         "F"),
-                             labels = c("Male\nSpeakers",
-                                        "Female\nSpeakers")
-                             )) %>%
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c("lessClear",
+                                              "conv",
+                                              "moreClear"),
+                                   labels = c("Less\nClear",
+                                              "Conv",
+                                              "More\nClear"))) %>%
   dplyr::group_by(DatabaseID, StudyID, Group, Sex, condition, Sent) %>%
   dplyr::summarise(Int = mean(Int, na.rm = T)) %>%
   
   # Making the Plot
   ggplot() +
   aes(y = Int,
-      x = Sex,
+      x = condition,
       color = Group,
       fill = Group) +
   geom_boxplot(alpha = .6) +
   
   # Adding significance bars
-  ## Male vs. Female Speakers
-  ggsignif::geom_signif(
-    comparisons = list(c("Male\nSpeakers", "Female\nSpeakers")),
-    y_position = c(108),
-    color = "black",
-    tip_length = 0,
-    map_signif_level=TRUE,
-    annotations = "*",
-    ) +
-  
+
   ## Male Speakers: PD vs. HC
   ggsignif::geom_signif(
-    y_position = c(100),
-    xmin = c(.8),
-    xmax = c(1.2),
-    annotation = c("*"),
+    y_position = c(100, 100, 100, NA, NA, NA),
+    xmin = c(.8, 1.8, 2.8, NA, NA, NA),
+    xmax = c(1.2, 2.2, 3.2, NA, NA, NA),
+    annotation = c("*", "*", "*", NA, NA, NA),
     tip_length = 0,
     color = "black",
   ) +
@@ -2028,6 +1862,7 @@ plot_Int <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_al
   scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
   
   theme_minimal() +
+  theme(panel.border = element_rect(colour = "darkgrey", fill=NA, size=1)) +
   labs(y = "VAS Rating") +
   ggtitle("Intelligibility") +
   theme(
@@ -2040,7 +1875,10 @@ plot_Int <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_al
   
   # Color Palate
   scale_color_manual(values = c(color_HC,color_PD)) +
-  scale_fill_manual(values = c(color_HC,color_PD))
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  
+  # Facet by Sex
+  facet_wrap(~Sex)
 
 plot_Int
 ```
@@ -2095,6 +1933,7 @@ plot_AP <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_all
   scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
   
   theme_minimal() +
+  theme(border(color = "darkgrey")) +
   labs(y = "VAS Rating") +
   ggtitle("Articulatory Precision") +
   theme(
@@ -2532,6 +2371,1406 @@ ggsave(filename = "S1_Variability across Domains.png",
        units = "in",
        scale = 1.3)
     
+```
+
+# Plots - Condition
+```{r}
+myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
+color_HC <- myPal[2] 
+color_PD <- myPal[6]
+```
+
+## 1. Intelligibility
+```{r}
+plot_Int_data <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::select(!V1) %>%
+  dplyr::filter(ratingType == "Int") %>%
+  dplyr::rename(Int = Rating) %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M","F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   ))) %>%
+  dplyr::group_by(Sex, Group, condition) %>%
+  dplyr::summarise(M = mean(Int, na.rm = T),
+                   SE = plotrix::std.error(Int, na.rm = T)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(upper = M + SE,
+                lower = M - SE)
+  
+  # Making the Plot
+plot_Int <- plot_Int_data %>%
+  ggplot() +
+  aes(y = M,
+      x = condition) +
+  
+  # Line
+  geom_line(
+    aes(color = Group,
+        group = Group),
+    alpha = .6,
+    ) +
+  
+  # Error Bars
+  geom_errorbar(aes(
+    ymin = lower,
+    ymax = upper,
+    color = Group,
+    group = Group
+    ),
+    width = .1,
+    ) +
+  
+  # Point
+  geom_point(
+    aes(color = Group,
+        group = Group),
+    ) +
+
+  # Adding significance bars - HC*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(113, 113, 113, 113, 113, 113),
+                            xmin = c(1.1, 2.1, NA, 1.1, 2.1, NA),
+                            xmax = c(1.9, 2.9, NA, 1.9, 2.9, NA),
+                            annotations = c("*", "*", NA, "*", "*", NA),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = color_HC,
+                        tip_length = 0,
+                        manual = T) +
+  
+  # Adding significance bars - PD*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(123, 123, 123, 123, 123, 123),
+                            xmin = c(1.1, 2.1, NA, 1.1, 2.1, NA),
+                            xmax = c(1.9, 2.9, NA, 1.9, 2.9, NA),
+                            annotations = c("*", "*", NA, "*", "*", NA),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = color_PD,
+                        tip_length = 0,
+                        manual = T) +
+  
+  # Adding significance bars - Group ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(100, 100, 100, 100, 100, 100),
+                            xmin = c(.9, 1.9, 2.9, NA, NA, NA),
+                            xmax = c(1.1, 2.1, 3.1, NA, NA, NA),
+                            annotations = c("*", "*", "*", NA, NA, NA),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = "black",
+                        tip_length = 0,
+                        manual = T) +
+  
+  # Facet by Sex
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,130)) +
+  scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "VAS Rating") +
+  ggtitle("Intelligibility") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_Int
+```
+
+## 2. Articulatory Precision
+```{r}
+plot_AP_data <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::select(!V1) %>%
+  dplyr::filter(ratingType == "AP") %>%
+  dplyr::rename(AP = Rating) %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   ))) %>%
+  dplyr::group_by(Sex, Group, condition) %>%
+  dplyr::summarise(M = mean(AP, na.rm = T),
+                   SE = plotrix::std.error(AP, na.rm = T)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(upper = M + SE,
+                lower = M - SE)
+  
+  # Making the Plot
+plot_AP <- plot_AP_data %>%
+  ggplot() +
+  aes(y = M,
+      x = condition) +
+  
+  # Line
+  geom_line(
+    aes(color = Group,
+        group = Group),
+    alpha = .6,
+    ) +
+  
+  # Error Bars
+  geom_errorbar(aes(
+    ymin = lower,
+    ymax = upper,
+    color = Group,
+    group = Group
+    ),
+    width = .1,
+    ) +
+  
+  # Point
+  geom_point(
+    aes(color = Group,
+        group = Group),
+    ) +
+
+  # Adding significance bars - HC*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(113, 113, 113, 113, 113, 113),
+                            xmin = c(1.1, 2.1, NA, 1.1, NA, NA),
+                            xmax = c(1.9, 2.9, NA, 1.9, NA, NA),
+                            annotations = c("*", "*", NA, "*", NA, NA),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = color_HC,
+                        tip_length = 0,
+                        manual = T) +
+  
+  # Adding significance bars - PD*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(123, 123, 123, 123, 123, 123),
+                            xmin = c(1.1, 2.1, NA, 1.1, 2.1, NA),
+                            xmax = c(1.9, 2.9, NA, 1.9, 2.9, NA),
+                            annotations = c("*", "*", NA, "*", "*", NA),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = color_PD,
+                        tip_length = 0,
+                        manual = T) +
+  
+  # Adding significance bars - Group ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(100, 100, 100, 100, 100, 100),
+                            xmin = c(.9, 1.9, 2.9, NA, NA, NA),
+                            xmax = c(1.1, 2.1, 3.1, NA, NA, NA),
+                            annotations = c("*", "*", "*", NA, NA, NA),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = "black",
+                        tip_length = 0,
+                        manual = T) +
+  
+  # Facet by Sex
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,130)) +
+  scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "VAS Rating") +
+  ggtitle("Articulatory Precision") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_AP
+```
+
+## 3. Acoustic VSA
+```{r}
+plot_aVSA_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   )),
+                aVSA = aVSA/1000)
+  
+  # Making the Plot
+plot_aVSA <- plot_aVSA_data %>%
+  ggplot() +
+  aes(y = aVSA,
+      x = condition) +
+  geom_boxplot(aes(
+    color = Group,
+    fill = Group),
+    alpha = .6) +
+  
+  # Facet by Sex
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,850)) +
+  #scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = bquote('kHz'^2)) +
+  ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_aVSA
+```
+
+## 4. Acoustic Distance
+```{r}
+plot_acoDistance_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   )))
+  
+  # Making the Plot
+plot_acoDistance <- plot_acoDistance_data %>%
+  ggplot() +
+  aes(y = acoDistance,
+      x = condition) +
+  geom_boxplot(aes(
+    color = Group,
+    fill = Group
+    ),
+    alpha = .6) +
+  
+  # Adding significance bars - HC*Condition -----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(1850, 1850, 1850, 1850, 1850, 1850),
+        xmin = c(
+          # Male Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          "*",  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_HC,
+    tip_length = 0,
+    manual = T) +
+  
+  # Adding significance bars - PD*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(2050, 2050, 2050, 2050, 2050, 2050),
+        xmin = c(
+          # Male Speakers
+          1.2, # Less Clear -> Conv
+          2.3, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.2, # Less Clear -> Conv
+          2.3, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          2.1, # Less Clear -> Conv
+          3.2, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          2.1, # Less Clear -> Conv
+          3.2, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_PD,
+    tip_length = 0,
+    manual = T) +
+  
+  # Facet by Sex ----
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,2200)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "Hz") +
+  ggtitle("Acoustic Distance") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_acoDistance
+```
+
+## 5. F2 Slope
+```{r}
+plot_F2_Slope_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   )))
+  
+  # Making the Plot
+plot_F2_Slope <- plot_F2_Slope_data %>%
+  ggplot() +
+  aes(y = F2_Slope,
+      x = condition) +
+  geom_boxplot(aes(
+    color = Group,
+    fill = Group),
+    alpha = .6) +
+  
+  # Adding significance bars - HC*Condition -----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(11, 11, 11, 11, 11, 11),
+        xmin = c(
+          # Male Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          NA,  # Less Clear -> Conv
+          NA,  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_HC,
+    tip_length = 0,
+    manual = T) +
+  
+  # Adding significance bars - PD*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(13, 13, 13, 13, 13, 13),
+        xmin = c(
+          # Male Speakers
+          1.2, # Less Clear -> Conv
+          2.3, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.2, # Less Clear -> Conv
+          2.3, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          2.1, # Less Clear -> Conv
+          3.2, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          2.1, # Less Clear -> Conv
+          3.2, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          NA,  # Less Clear -> Conv
+          NA,  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_PD,
+    tip_length = 0,
+    manual = T) +
+  
+  # Facet by Sex ----
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,14)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "Hz/ms") +
+  ggtitle("F2 Slope") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_F2_Slope
+```
+
+## 6. kVSA
+```{r}
+plot_kVSA_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   )))
+  
+  # Making the Plot
+plot_kVSA <- plot_kVSA_data %>%
+  ggplot() +
+  aes(y = kVSA,
+      x = condition) +
+  geom_boxplot(aes(
+    color = Group,
+    fill = Group),
+    alpha = .6) +
+  
+   # Facet by Sex ----
+  facet_grid(~Sex) +
+
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = bquote('mm'^2)) +
+  ggtitle("Kinematic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_kVSA
+```
+
+## 7. Kin Distance
+```{r}
+plot_kinDistance_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   )))
+  
+  # Making the Plot
+plot_kinDistance <- plot_kinDistance_data %>%
+  ggplot() +
+  aes(y = kinDistance,
+      x = condition) +
+  geom_boxplot(aes(
+    color = Group,
+    fill = Group),
+    alpha = .6) +
+  
+    # Adding significance bars - HC*Condition -----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(30, 30, 30, 30, 30, 30),
+        xmin = c(
+          # Male Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_HC,
+    tip_length = 0,
+    manual = T) +
+  
+  # Adding significance bars - PD*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(33, 33, 33, 33, 33, 33),
+        xmin = c(
+          # Male Speakers
+          1.2, # Less Clear -> Conv
+          2.3, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.2, # Less Clear -> Conv
+          2.3, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          2.1, # Less Clear -> Conv
+          3.2, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          2.1, # Less Clear -> Conv
+          3.2, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          "*",  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_PD,
+    tip_length = 0,
+    manual = T) +
+  
+  
+  # Facet by Sex ----
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,35)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "mm") +
+  ggtitle("Kinematic Distance") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_kinDistance
+```
+
+## 8. dTB Speed
+```{r}
+plot_dTB_Speed_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   )))
+  
+  # Making the Plot
+plot_dTB_Speed <- plot_dTB_Speed_data %>%
+  ggplot() +
+  aes(y = dTB_speedMax,
+      x = condition) +
+  geom_boxplot(aes(
+    color = Group,
+    fill = Group
+  ),
+  alpha = .6) +
+  
+  # Adding significance bars - HC*Condition -----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(800, 800, 800, 800, 800, 800),
+        xmin = c(
+          # Male Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          NA,  # Less Clear -> Conv
+          NA,  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_HC,
+    tip_length = 0,
+    manual = T) +
+  
+  # Facet by Sex ----
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,900)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "mm/s") +
+  ggtitle("dTB Speed") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_dTB_Speed
+```
+
+## 8. Jaw Speed
+```{r}
+plot_Jaw_Speed_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conv",
+                                     "More\nClear"
+                                   )))
+  
+  # Making the Plot
+plot_Jaw_Speed <- plot_Jaw_Speed_data %>%
+  ggplot() +
+  aes(y = Jaw_speedMax,
+      x = condition) +
+  geom_boxplot(aes(
+    color = Group,
+    fill = Group
+  ),
+  alpha = .6) +
+  
+  # Adding significance bars - HC*Condition -----
+  ggsignif::geom_signif(data = data.frame(Group = c(
+    "Less\nClear",
+    "Conv",
+    "More\nClear")),
+    aes(y_position = c(500, 500, 500, 500, 500, 500),
+        xmin = c(
+          # Male Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          0.8, # Less Clear -> Conv
+          1.9, # Conv -> More Clear
+          NA), # Padding
+        xmax = c(
+          # Male Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          1.7, # Less Clear -> Conv
+          2.8, # Conv -> More Clear
+          NA), # Padding
+        annotations = c(
+          # Male Speakers
+          NA,  # Less Clear -> Conv
+          "*",  # Conv -> More Clear
+          NA,  # Padding
+          # Female Speakers
+          NA,  # Less Clear -> Conv
+          NA,  # Conv -> More Clear
+          NA), # Padding
+        group=c(1,2,3,4,5,6)),
+    color = color_HC,
+    tip_length = 0,
+    manual = T) +
+  
+  # Facet by Sex ----
+  facet_grid(~Sex) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = c(0,550)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "mm/s") +
+  ggtitle("Jaw Speed") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+
+plot_Jaw_Speed
+```
+
+## Combining all of the plots
+```{r}
+library(patchwork)
+
+# All combined
+plot_s2 <- plot_Int + plot_AP + plot_spacer() + guide_area()  +
+  plot_aVSA + plot_acoDistance + plot_F2_Slope + plot_spacer() +
+  plot_kVSA + plot_kinDistance + plot_dTB_Speed + plot_Jaw_Speed +
+  plot_layout(guides = "collect",
+              nrow = 3,
+              ncol = 4)
+plot_s2
+
+dir.create(path = "Data/Plots/Results",
+           showWarnings = F)
+ggsave(filename = "S2 Results.png",
+       plot = plot_s2,
+       path = "Data/Plots/Results",
+       height = 6,
+       width = 8,
+       scale = 1.2)
+
+# Perceptual Plots
+plot_s2_perceptual <- ggarrange(plot_Int,plot_AP,
+                                common.legend = T,
+                                legend = "bottom")
+plot_s2_perceptual
+
+dir.create(path = "Data/Plots/Results",
+           showWarnings = F)
+ggsave(filename = "Results_perceptual.png",
+       plot = plot_s2_perceptual,
+       path = "Data/Plots/Results",
+       height = 2.5,
+       width = 7,
+       scale = 1.1,
+       bg = "white")
+
+# Acoustic Plots
+plot_s2_acoustic <- plot_aVSA + plot_acoDistance +
+  plot_F2_Slope + guide_area() +
+    plot_layout(guides = "collect",
+              design = "
+              AABB
+              CCDD")
+plot_s2_acoustic
+
+dir.create(path = "Data/Plots/Results",
+           showWarnings = F)
+ggsave(filename = "S2 Results_acoustic.png",
+       plot = plot_s2_acoustic,
+       path = "Data/Plots/Results",
+       height = 4,
+       width = 6,
+       scale = 1.3)
+
+# Kinematic Plots
+plot_s2_kinematic <- plot_kVSA + plot_kinDistance +
+  plot_dTB_Speed + plot_Jaw_Speed + 
+    plot_layout(guides = "collect",
+              design = "
+              AABB
+              CCDD")
+plot_s2_kinematic
+
+dir.create(path = "Data/Plots/Results",
+           showWarnings = F)
+ggsave(filename = "S2 Results_kinematic.png",
+       plot = plot_s2_kinematic,
+       path = "Data/Plots/Results",
+       height = 4,
+       width = 6,
+       scale = 1.3)
+
+stop()
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+myPal <- rcartocolor::carto_pal(n = 15, name = "Geyser")
+color_HC <- myPal[2] 
+color_PD <- myPal[6]
+myPal_1 <- myPal[1]
+myPal_2 <- myPal[3]
+myPal_3 <- myPal[5]
+
+
+perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::rename(Measure = ratingType,
+                Value = Rating) %>%
+  dplyr::group_by(condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   sd = sd(Value, na.rm = T),
+                   CV = sd / M * 100) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(Domain = "Perceptual")
+
+vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                aVSA = aVSA/1000) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value") %>%
+  dplyr::group_by(condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   sd = sd(Value, na.rm = T),
+                   CV = sd / M * 100) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(Domain = case_when(
+    Measure == "aVSA" ~ "Acoustic",
+    Measure == "kVSA" ~ "Kinematic",
+  ))
+
+aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F"))) %>%
+  tidyr::pivot_longer(cols = c(acoDistance, kinDistance,
+                               F2_Slope, dTB_speedMax, Jaw_speedMax),
+                      names_to = "Measure",
+                      values_to = "Value") %>%
+  dplyr::group_by(condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   sd = sd(Value, na.rm = T),
+                   CV = sd / M * 100) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(Domain = case_when(
+    Measure == "acoDistance" ~ "Acoustic",
+    Measure == "F2_Slope" ~ "Acoustic",
+    Measure == "kinDistance" ~ "Kinematic",
+    Measure == "dTB_speedMax" ~ "Kinematic",
+    Measure == "Jaw_speedMax" ~ "Kinematic",
+  ))
+
+variabilityMeasures <- rbind(perceptualMeasures,
+                             aiMeasures,
+                             vsaMeasures) %>%
+  dplyr::mutate(condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less Clear",
+                                     "Conversational",
+                                     "More Clear"
+                                   )),
+                Measure = factor(Measure,
+                                 levels = c(
+                                   "Int",
+                                   "AP",
+                                   "aVSA",
+                                   "kVSA",
+                                   "acoDistance",
+                                   "kinDistance",
+                                   "F2_Slope",
+                                   "dTB_speedMax",
+                                   "Jaw_speedMax"
+                                 ),
+                                 labels = c(
+                                   "Intelligibility",
+                                   "Articulatory Precision",
+                                   "Acoustic VSA",
+                                   "Kinematic VSA",
+                                   "Acoustic Distance",
+                                   "Kinematic Distance",
+                                   "F2 Slope",
+                                   "dTB Peak Speed",
+                                   "Jaw Peak Speed"
+                                 )),
+                Domain = factor(Domain,
+                                levels = c(
+                                  "Perceptual",
+                                  "Acoustic",
+                                  "Kinematic")))
+
+variabilityMeasures %>%
+  ggplot() +
+  aes(x = condition,
+      y = CV,
+      group = Measure,
+      label = Measure,
+      color = Domain,
+      ) +
+  geom_line(show.legend = FALSE) +
+  geom_point(show.legend = FALSE) +
+  geom_text(data = variabilityMeasures %>% dplyr::filter(condition == "More Clear"),
+              hjust = 0, nudge_x = 0.1,
+              color = "black",
+            show.legend = FALSE) +
+  facet_wrap(~Domain, ncol = 1,
+             scales = "free_y") +
+  scale_x_discrete(expand = expansion(mult = c(0.1, .75))) +
+  labs(y = "Coefficient of Variation (%)",
+       x = NULL) +
+  scale_color_manual(values = c(myPal_1, myPal_2, myPal_3)) +
+  theme_minimal()
+
+ggsave(plot = last_plot(),
+       filename = "S2_MeasureVariability.png",
+       path = "Data/Plots/Results",
+       height = 5,
+       width = 4,
+       units = "in",
+       scale = 1.2)
+
+```
+
+## Duration, Extent, Slope
+```{r}
+library(rcartocolor) # install.packages('rcartocolor')
+myPal <- rcartocolor::carto_pal(n = 11, name = "Geyser")[c(2, 3, 4, 5)]
+
+vowels <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(phrase == "bsent") %>%
+  dplyr::group_by(DatabaseID, Group, condition, phrase) %>%
+  dplyr::mutate(time = time - min(time),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less Clear",
+                                     "Conversational",
+                                     "More Clear"
+                                   )),
+                label = factor(label,
+                               levels = c(
+                                 "ai",
+                                 "a",
+                                 "i",
+                                 "v"
+                               ),
+                               labels = c(
+                                 "aɪ",
+                                 "a",
+                                 "i",
+                                 "ʌ"
+                                 )))
+
+vowelBoundaries <- vowels %>%
+  dplyr::group_by(DatabaseID, Group, condition, phrase, label, token) %>%
+  dplyr::summarise(onset = min(time),
+                   offset = max(time)) %>%
+  dplyr::filter(token != "a.1") %>%
+  dplyr::filter(token != "ai.1") %>%
+  dplyr::filter(token != "i.2") %>%
+  dplyr::filter(token != "i.3") %>%
+  dplyr::filter(token != "v.1") %>%
+  dplyr::filter(token != "`") %>%
+  dplyr::filter(token != "a.3") %>%
+  dplyr::group_by(condition, phrase, label, token) %>%
+  dplyr::summarise(onset = mean(onset, na.rm = T),
+                   offset = mean(offset, na.rm = T))
+
+vowelLabels <- vowelBoundaries %>%
+  dplyr::mutate(midpoint = (offset - onset)/2 + onset)
+
+wordLabels <- vowelLabels %>%
+  dplyr::filter(condition == "More Clear") %>%
+  dplyr::mutate(word = case_when(
+    token == "ai" ~ "Buy",
+    token == "a" ~ "Bobby",
+    token == "i" ~ "Bobby",
+    token == "v" ~ "puppy",
+    token == "i.1" ~ "puppy"
+  )) %>%
+  dplyr::group_by(condition, phrase, word) %>%
+  dplyr::summarize(midpoint = mean(midpoint)) %>%
+  dplyr::ungroup() %>%
+  dplyr::add_row(condition = "More Clear",
+                 phrase = "bsent",
+                 word = "a",
+                 midpoint = mean(x = c(.$midpoint[.$word == "Bobby"],
+                                       .$midpoint[.$word == "puppy"]),
+                                 na.rm = T))
+
+
+phraseBoundaries <- vowels %>%
+  dplyr::group_by(DatabaseID, Group, condition, phrase) %>%
+  dplyr::summarise(onset = min(time),
+                   offset = max(time)) %>%
+  dplyr::group_by(condition, phrase) %>%
+  dplyr::summarise(onset = mean(onset, na.rm = T),
+                   offset = mean(offset, na.rm = T)) %>%
+  tidyr::pivot_longer(names_to = "timePoint",
+                      values_to = "time",
+                      cols = c(onset, offset))
+
+phraseBoundaries %>%
+  ggplot() +
+  aes(x = time,
+      y = condition) +
+  geom_line(linetype = 2) +
+  # Adding the vowels
+  geom_segment(data = vowelBoundaries,
+            aes(x = onset, xend = offset,
+                y = condition, yend = condition,
+                color = label,
+                group = condition),
+            size = 10,
+            lineend = "butt",
+            show.legend = F) +
+  # Vowel Labels
+  geom_text(data = vowelLabels,
+            aes(x = midpoint,
+                y = condition,
+                label = label),
+            show.legend = F) +
+  # Word Labels
+  geom_text(data = wordLabels,
+            aes(x = midpoint,
+                y = condition,
+                label = word),
+            nudge_y = .5,
+            show.legend = F) +
+  labs(x = "Time (s, Normalized)",
+       y = NULL) +
+  theme_classic() +
+  scale_color_manual(values = myPal)
+
+ggsave(filename = "S2_Relative Vowel Duations.png",
+       plot = last_plot(),
+       path = "Data/Plots/Results",
+       height = 4,
+       width = 6,
+       scale = .9)
+
+```
+
+## Intelligibility and Articulatory Precision Ranges
+```{r, eval = F}
+# Color Pallate
+myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
+color_HC <- myPal[2] 
+color_PD <- myPal[6]
+
+# Load in the Data
+speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv")
+
+plotData <- utils::read.csv(file = "Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
+  dplyr::select(!1) %>%
+  dplyr::group_by(DatabaseID, ratingType, condition) |>
+  dplyr::summarise(M = mean(M, na.rm = T)) %>%
+  tidyr::pivot_wider(
+    names_from = condition,
+    values_from = M) %>%
+  dplyr::mutate(segMin = base::min(conv,lessClear,moreClear),
+                segMax = base::max(conv,lessClear,moreClear),
+                range = segMax - segMin,
+                ratingAvg = base::mean(conv,lessClear,moreClear),
+                ratingType = factor(ratingType,
+                                    levels = c("Int",
+                                               "AP"),
+                                    labels = c("Intelligibility",
+                                               "Articulatory Precision"))) %>%
+  base::merge(., speakerList %>% dplyr::select(DatabaseID, StudyID, Group)) %>%
+  dplyr::mutate(StudyID = as.factor(StudyID)) %>%
+  arrange(segMax)
+
+segmentData <- plotData %>%
+  dplyr::select(DatabaseID, StudyID, Group, ratingType, segMin, segMax)
+
+pointData <- plotData %>%
+    dplyr::select(DatabaseID, StudyID, Group, ratingType, conv, lessClear, moreClear) %>%
+  tidyr::pivot_longer(
+    cols = c(conv,lessClear,moreClear),
+    values_to = "Value",
+    names_to = "Condition") %>%
+  dplyr::mutate(Condition = factor(Condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less Clear",
+                                     "Conversational",
+                                     "More Clear"
+                                   )))
+
+
+# With a bit more style
+plot_IntAP <- plotData %>%
+  ggplot() +
+  geom_segment(
+    data = segmentData,
+    aes(x = fct_inorder(StudyID),
+        xend = StudyID,
+        y = segMin,
+        yend = segMax),
+    color="grey") +
+  geom_point(
+    data = pointData,
+    aes(x = fct_inorder(StudyID),
+        y = Value,
+        shape = Condition,
+        alpha = Condition,
+        color = Group),
+    size = 2) +
+  coord_flip()+
+  
+  # Specifying the theme
+  theme_minimal() +
+  theme(
+    #legend.position = "none",
+    panel.border = element_blank(),
+    #aspect.ratio = 1,
+  ) +
+  
+  # Facet and modify y axis scale
+  facet_grid(Group~ratingType, scales = "free_y") +
+  ylim(c(0,100)) +
+  
+  # Labels & Title
+  labs(x = NULL,
+       y = "Perceptual Ratings (VAS)",
+       title = NULL) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15)) +
+  scale_alpha_manual(values = c(.6, .8, 1))
+
+plot_IntAP
+
+
+ggplot2::ggsave("Data/Plots/Results/S2_avgRatings.png",
+                plot = last_plot(),
+                height = 6,
+                width = 6.5,
+                units = "in")
+
+rm(plotData, segmentData, pointData, speakerList)
 ```
 
 # Motor Equivilance Plot

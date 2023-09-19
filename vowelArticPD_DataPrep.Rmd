@@ -1,0 +1,1701 @@
+---
+title: "Dissertation - Data Prep"
+---
+
+```{r}
+rm(list = ls())
+```
+
+# Packages
+```{r}
+library(tidyverse) # install.packages('tidyverse')
+library(sp) # install.packages('sp')
+library(ggpubr) # install.packages('ggpubr')
+library(openxlsx) # install.packages('openxlsx')
+library(plyr) # install.packages('plyr')
+library(PraatR) # install.packages('PraatR')
+library(beepr) # install.packages('beepr')
+source('Functions/MSL Tools.R')
+```
+
+# Load Data
+
+## Listener Data
+This block cleans up the listener data.
+```{r}
+# Load in the data
+df <- file.info(list.files("Data/RawData/ListenerData/", full.names = T))
+importPath <- rownames(df)[which.max(df$mtime)]
+
+listeners <- utils::read.csv(file = importPath,
+                                header = FALSE,
+                                stringsAsFactors = FALSE,
+                                strip.white=TRUE) %>%
+  
+  # Removing a participant that experienced technical difficulties
+  dplyr::filter(V18 != "5e7f4d2ad29f7560f032abb9")
+
+# Headings
+listenerDemoHeadings <- listeners[1,1:36] |>
+  t() |>
+  as.data.frame() |>
+  dplyr::rename(heading = 1) |>
+  dplyr::mutate(heading = make.unique(heading)) |>
+  t()
+
+headings <- listeners |>
+  dplyr::select(!V1:V36) |>
+  dplyr::mutate(Row = dplyr::row_number()) |>
+  dplyr::filter(Row <= 2) |>
+  dplyr::select(!Row) |>
+  t() |>
+  as.data.frame() |>
+  dplyr::rename(ID = 1,
+                sentRep = 2) |>
+  dplyr::mutate(
+    ratingType = ifelse(grepl("Int",ID, ignore.case = T),
+                        "Int",
+                        "AP"),
+    speaker = gsub("\\_.*", "", ID),
+    reliability = ifelse(grepl("_R", ID, ignore.case = T),
+                         "_R",
+                         ""),
+    ID = gsub("\\_.*", "", ID),
+    ) |>
+  dplyr::group_by(ID, ratingType) |>
+  dplyr::mutate(conditionCode = make.unique(sentRep),
+                condition = case_when(
+                  grepl(".1",conditionCode, fixed = T) ~ "lessClear",
+                  grepl(".2",conditionCode, fixed = T) ~ "moreClear",
+                  grepl(".3",conditionCode, fixed = T) ~ "conv",
+                  grepl(".4",conditionCode, fixed = T) ~ "lessClear",
+                  grepl(".5",conditionCode, fixed = T) ~ "moreClear",
+                  TRUE ~ "conv"
+                ),
+                sentRep = gsub("_",".",sentRep),
+                ID = paste(speaker, "_",
+                           ratingType, "_",
+                           sentRep, "_",
+                           condition,
+                           reliability, sep = "")) |>
+  dplyr::ungroup() |>
+  dplyr::select(ID) |>
+  t()
+
+headings <- cbind(listenerDemoHeadings,headings) %>%
+  make.unique(.)
+colnames(listeners) <- headings
+
+listenerData <- listeners |>
+  dplyr::filter(row_number() != 1:3) |>
+  dplyr::filter(Status != "Survey Preview") |>
+  dplyr::filter(Finished == "True") |>
+  dplyr::filter(Q1.2 == "Yes, I can hear the audio.") |>
+  dplyr::mutate(ListenerID = paste("L",row_number(),sep = "")) |>
+  relocate(ListenerID, .before = StartDate) |> # Puts ID col at the beginning
+  dplyr::rename(inUS = Q1,
+                english = Q2,
+                age = Q1.1,
+                gender = Q2.1,
+                race = Q3,
+                ethnicity = Q4)
+
+rm(headings,listenerDemoHeadings)
+
+listenerDemo <- listenerData |>
+  dplyr::mutate(age = as.numeric(age)) |>
+  dplyr::select(ListenerID:37)
+
+listenerRatings <- listenerData |>
+  dplyr::select(!StartDate:37) |>
+  pivot_longer(cols = 2:last_col(),names_to = "Token",
+               values_to = "Rating") |>
+  dplyr::mutate(
+  condition = case_when(
+    grepl("conv",Token) ~ "conv",
+    grepl("moreClear",Token) ~ "moreClear",
+    grepl("lessClear",Token) ~ "lessClear"
+  ),
+  DatabaseID = gsub("\\_.*", "", Token),
+  # Correcting Sub18 to "Sub18_2"
+  DatabaseID = gsub(pattern = "Sub18",
+                   replacement = "Sub18_2",
+                   x = DatabaseID),
+  # Correcting Sub49 to "Sub49_2"
+  DatabaseID = gsub(pattern = "Sub49",
+                 replacement = "Sub49_2",
+                 x = DatabaseID),
+  # Correcting Sub55 to "Sub55_2"
+  DatabaseID = gsub(pattern = "Sub55",
+                 replacement = "Sub55_2",
+                 x = DatabaseID),
+  ratingType = case_when(
+    grepl("Int",Token) ~ "Int",
+    grepl("AP",Token) ~ "AP"
+  ),
+  rep = case_when(
+    grepl(".1",Token, fixed = T) ~ "1",
+    grepl(".2",Token, fixed = T) ~ "2",
+    grepl(".3",Token, fixed = T) ~ "3",
+    grepl(".4",Token, fixed = T) ~ "4",
+    grepl(".5",Token, fixed = T) ~ "5"
+  ),
+  Sent = case_when(
+    grepl("bsent",Token) ~ "bsent",
+    grepl("tsent",Token) ~ "tsent",
+    grepl("ksent",Token) ~ "ksent"
+  ),
+  Rating = as.numeric(Rating),
+  rep = as.factor(rep)) |>
+  dplyr::filter(!grepl("Example",Token)) |>
+  #dplyr::filter(!is.na(Rating)) %>%
+  dplyr::select(ListenerID,
+                DatabaseID,
+                Token,
+                condition,
+                Sent,
+                rep,
+                ratingType,
+                Rating) %>%
+  dplyr::mutate(ListenerID = as.factor(ListenerID),
+                DatabaseID = as.factor(DatabaseID),
+                Token = as.factor(Token),
+                condition = as.factor(condition),
+                Sent = as.factor(Sent),
+                rep = as.factor(rep),
+                ratingType = as.factor(ratingType))
+
+relRatings <- listenerRatings %>%
+  dplyr::filter(grepl(pattern = "_R",
+                      x = Token)) %>%
+  dplyr::filter(!is.na(Rating)) %>%
+  dplyr::rename(Rating_rel = Rating) %>%
+  dplyr::mutate(Token = gsub(pattern = "_R",
+                             replacement = "",
+                             Token)) %>%
+  base::merge(listenerRatings %>%
+               dplyr::filter(!grepl(pattern = "_R",
+                                    x = Token)), .)
+
+unreliableListeners <- relRatings %>%
+  # Calculate the difference between first and second rating
+  dplyr::mutate(diff = abs(Rating - Rating_rel)) %>%
+  # Calculate each listeners' total error
+  dplyr::group_by(ListenerID) %>%
+  dplyr::summarise(ListenerError = mean(diff, na.rm = T)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(ListenerError_z = as.numeric(
+    abs(scale(ListenerError)))) %>%
+  dplyr::filter(ListenerError_z > 2.0)
+
+listenerRatings_Summary <- listenerRatings %>%
+  # Removing the unreliable listeners
+  dplyr::filter(!ListenerID %in% unreliableListeners$ListenerID) %>%
+  dplyr::group_by(DatabaseID,
+                  ratingType,
+                  condition,
+                  Sent,
+                  rep,
+                  ) %>%
+  dplyr::summarize(Count = sum(!is.na(Rating)),
+            M = mean(Rating,na.rm = T),
+            SD = sd(Rating, na.rm = T))
+
+speakers <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(DatabaseID:Age)
+
+dir.create("Data/PreppedData/ListenerData",
+           showWarnings = F)
+write.csv(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv",
+          x = listenerRatings %>%
+            dplyr::filter(!is.na(Rating)) %>%
+            base::merge(., speakers) %>%
+            dplyr::select(ListenerID, DatabaseID, StudyID:Age,Token:Rating))
+write.csv(file = "Data/PreppedData/ListenerData/ListenerRatings.csv",
+          x = listenerRatings_Summary)
+write.csv(file = "Data/PreppedData/ListenerData/ListenerDemographics.csv",
+          x = listenerDemo)
+write.csv(file = "Data/PreppedData/ListenerData/ListenerRatings_relRatings.csv",
+          x = relRatings)
+
+rm(listenerData, listenerDemo, listenerRatings, listeners, relRatings)
+```
+### Listener Reliability
+```{r}
+
+relRatings <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_relRatings.csv")
+
+cor <- stats::lm(Rating ~ Rating_rel, data = relRatings)
+summary(cor)
+
+sjPlot::tab_model(rel)
+
+predicted_first <- predict(rel, newdata = relRatings)
+predicted_second <- relRatings$Rating_rel
+
+# Calculate the correlation
+correlation <- cor(predicted_first, predicted_second)
+
+# Print the correlation
+print(correlation)
+
+thompson2023 <- rio::import(file = "Data/ReferenceData/ListenerData_Thompsonetal2023.csv") %>%
+  dplyr::group_by(SpeakerID) %>%
+  dplyr::summarize(Count = sum(!is.na(Int_VAS)),
+            M = mean(Int_VAS,na.rm = T),
+            SD = sd(Int_VAS, na.rm = T))
+thompson2023
+
+```
+
+### Avg Rating Plot
+```{r, eval = F}
+speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::rename(StudyID = Study.ID)
+
+listenerRatings <- utils::read.csv(file = "Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
+    dplyr::select(!1)
+
+plotData <- listenerRatings |>
+  dplyr::group_by(SpeakerID, ratingType, Condition) |>
+  dplyr::summarize(Count = sum(!is.na(Rating)),
+            M = mean(Rating,na.rm = T),
+            SD = sd(Rating, na.rm = T)) |>
+  tidyr::pivot_wider(id_cols = SpeakerID:ratingType,
+                     names_from = Condition,
+                     values_from = M) |>
+  dplyr::mutate(segMin = base::min(conv,lessClear,moreClear),
+                segMax = base::max(conv,lessClear,moreClear),
+                ratingAvg = base::mean(conv,lessClear,moreClear),
+                DatabaseID = as.factor(SpeakerID),
+                ratingType = factor(ratingType,
+                                    levels = c("Int", "AP"),
+                                    labels = c("Intelligibility", "Articulatory Precision"))) |>
+  #dplyr::filter(ratingType == "Int") |>
+  dplyr::select(!SpeakerID) %>%
+  base::merge(., speakerList %>% dplyr::select(DatabaseID, StudyID)) %>%
+  dplyr::mutate(StudyID = as.factor(StudyID)) %>%
+  arrange(segMax)
+
+my_pal <- c("#f26430", "#272D2D","#256eff")
+# With a bit more style
+plot_IntAP <- plotData %>%
+  #dplyr::filter(ratingType == "Int") |>
+  ggplot() +
+  geom_segment(aes(x = fct_inorder(StudyID),
+                   xend = StudyID,
+                   y = segMin,
+                   yend = segMax),
+               color="grey") +
+  geom_point(aes(x = StudyID,
+                 y = lessClear),
+             color = my_pal[1],
+             size = 3) +
+  geom_point(aes(x = StudyID,
+                 y = conv),
+             color = my_pal[2],
+             size = 3) +
+  geom_point(aes(x = StudyID,
+                 y = moreClear),
+             color = my_pal[3],
+             size = 3) +
+  coord_flip()+
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    panel.border = element_blank(),
+  ) +
+  facet_wrap(~ratingType) +
+  xlab("") +
+  ylab("Perceptual Ratings (VAS)") +
+  ggtitle("Perceptual Ratings") +
+  ylim(c(0,100))
+plot_IntAP
+
+dir.create(path = "Data/Plots/Perceptual Plots", showWarnings = F)
+ggplot2::ggsave("Data/Plots/Perceptual Plots/avgRatings.png",
+                plot = last_plot(),
+                height = 6,
+                width = 6.5,
+                units = "in")
+
+rm(plotData_Int,plotData_AP, plot_AP, plot_Int, my_pal)
+```
+
+# Speaker Data
+## Loading the Data
+```{r}
+speakers <- rio::import(file = "Dissertation Progress.xlsx") %>%
+  dplyr::select(Complete,Sub:Age, 'Folder 2','Sentence Repetition') %>%
+  dplyr::filter(Complete == TRUE) %>%
+  dplyr::select(!Complete) %>%
+  dplyr::rename(DatabaseID = Sub)
+
+rio::export(speakers, file = "Data/PreppedData/Speaker List.csv")
+```
+
+## Qualtrics Audio Files
+This code block generates audiofiles that will be uploaded to qualtrics for the perceptual ratings in this project.
+```{r}
+speakers <- rio::import(file = "Dissertation Progress.xlsx") %>%
+  dplyr::select(Complete,Sub:Age, 'Folder 2','Sentence Repetition') %>%
+  dplyr::filter(Complete == TRUE) %>%
+  dplyr::select(!Complete) %>%
+  dplyr::rename(DatabaseID = Sub)
+
+NC <- 1
+
+projectPath <- function(FileName) {
+    if(is.null(FileName)) {
+    return(paste0("/Users/Austin/Library/CloudStorage/OneDrive-FloridaStateUniversity/Projects/Dissertation/Data/"))
+  } else {
+    return(paste0("/Users/Austin/Library/CloudStorage/OneDrive-FloridaStateUniversity/Projects/Dissertation/Data/", FileName))
+  }
+}
+
+while (NC <= NROW(speakers)) {
+  # IDing Speaker & Pulling their info from the master File Inventories.xlsx
+  speaker <- speakers$DatabaseID[NC]
+  speaker_fileInventories <- speakers %>%
+    dplyr::filter(DatabaseID == speaker)
+  file <- speaker_fileInventories$`Sentence Repetition`
+  sex <- speaker_fileInventories$Sex
+  group <- speaker_fileInventories$Group
+  
+  # IDing TextGrid Files
+  if (speaker == "Sub25") {
+    sentRepFile <- "Sub25_1_014_sync"
+  } else {
+    sentRepFile <- speaker_fileInventories$`Sentence Repetition`
+  }
+  
+  textGridFile <- list.files(path = "Data/RawData/SpeakerData/TextGrids",
+                             pattern = sentRepFile,
+                             ignore.case = TRUE)
+  
+  # Reading TextGrid
+  tg <- rPraat::tg.read(paste0("Data/RawData/SpeakerData/TextGrids/",textGridFile))
+  
+  condition <- base::cbind(tg[["condition"]][["t1"]],
+                tg[["condition"]][["t2"]],
+                tg[["condition"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label)) %>%
+    dplyr::filter(label != "")
+  
+  phrase <- base::cbind(tg[["phrase"]][["t1"]],
+                tg[["phrase"]][["t2"]],
+                tg[["phrase"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label),
+                  condition = case_when(
+                    onset > condition$onset[condition$label == "conv"] &
+                      offset < condition$offset[condition$label == "conv"] ~ "conv",
+                    onset > condition$onset[condition$label == "moreclear"] &
+                      offset < condition$offset[condition$label == "moreclear"] ~ "moreClear",
+                    onset > condition$onset[condition$label == "lessclear"] &
+                      offset < condition$offset[condition$label == "lessclear"] ~ "lessClear",
+                  )) %>%
+    dplyr::filter(label != "") %>%
+    dplyr::group_by(condition) %>%
+    dplyr::mutate(phraseToken = make.unique(label),
+                  phraseRep = base::sub(pattern = ".*[.]",
+                                         replacement = "",
+                                         x = phraseToken),
+                  phraseRep = as.numeric(phraseRep) + 1,
+                  phraseRep = case_when(
+                    is.na(phraseRep) ~ 1,
+                    TRUE ~ phraseRep,
+                ),
+                fileName = paste(label,"_", phraseRep, "_",condition,".wav", sep = "")) %>%
+    dplyr::ungroup() %>%
+    dplyr::relocate(condition, .after = phraseToken)
+  
+  # Finding this speaker's wav file
+  wavFile <- list.files(path = "Data/RawData/SpeakerData/AudioFiles", pattern = file,
+                        ignore.case = T) %>%
+    paste0("RawData/SpeakerData/AudioFiles/",.)
+    
+  audio <- rPraat::snd.read(
+      projectPath(wavFile),
+      fileType = "auto",
+      from = 1,
+      to = Inf,
+      units = "seconds"
+)
+  
+
+  # Creating the folder for the selected speaker
+  dir.create(path = "Data/PreppedData/ListenerData/AudioFiles", showWarnings = F)
+  
+  speakerPath <- paste0("Data/PreppedData/ListenerData/AudioFiles/",speaker)
+  dir.create(path = speakerPath, showWarnings = F)
+  
+  outputFile <- paste0("PreppedData/ListenerData/AudioFiles/",speaker)
+  
+  k <- 1
+  while (k <= NROW(phrase)) {
+    onset <- phrase$onset[k]
+    offset <- phrase$offset[k]
+    
+    phraseAudio <- rPraat::snd.cut(audio,
+                              Start = onset,
+                              End = offset,
+                              units = "seconds")
+    
+    rPraat::snd.write(phraseAudio,
+                      fileNameSound = paste0(projectPath(outputFile),"/",phrase$fileName[k]))
+    
+    
+    #PraatR::praat("Extract part...",
+    #              arguments = list(onset, offset, "rectangular", 1, "yes"),
+    #              input = projectPath(wavFile),
+    #              output = paste0(projectPath(outputFile),"/",phrase$fileName[k]),
+    #              filetype = "wav",
+    #              overwrite = T)
+    
+    k <- k + 1
+    rm(phraseAudio, onset, offset)
+  }
+  paste0("All of the audio files for ",speaker," have been generated!")
+  
+  NC <- NC + 1
+}
+  
+```
+
+
+## PRAAT Formant File
+This code block generates .Formant files form the .wav files. In this project, we're using .FBW files generated in TF32 for formant data. This block is not used in this project, but retained in the code for future use.
+```{r, eval = F}
+speakers <- rio::import(file = "Data/PreppedData/Speaker List.csv") %>%
+  dplyr::mutate(DatabaseID = as.factor(DatabaseID),
+                Group = as.factor(Group),
+                Sex = as.factor(Sex))
+
+fileInventories <- rio::import("/Volumes/Austin/Databases/CoarticData/File Inventories.xlsx")
+
+databasePath <- function(FileName){
+  if(is.null(FileName)) {
+    return(paste0("/Volumes/Austin/Databases/CoarticData"))
+  } else {
+    return(paste0("/Volumes/Austin/Databases/CoarticData/", FileName))
+  }
+}
+
+projectPath <- function(FileName) {
+    if(is.null(FileName)) {
+    return(paste0("/Users/Austin/Library/CloudStorage/OneDrive-FloridaStateUniversity/Projects/Dissertation/Data/RawData/SpeakerData/"))
+  } else {
+    return(paste0("/Users/Austin/Library/CloudStorage/OneDrive-FloridaStateUniversity/Projects/Dissertation/Data/RawData/SpeakerData/", FileName))
+  }
+}
+
+
+NC <- 1
+
+while (NC <= NROW(speakers)) {
+  # IDing Speaker & Pulling their info from the master File Inventories.xlsx
+  speaker <- speakers$DatabaseID[NC]
+  speaker_fileInventories <- fileInventories %>%
+    dplyr::filter(`Sub #` == speaker)
+  sex <- speaker_fileInventories$Sex
+  
+  # Finding the speakers' folder in the master data
+  speakerFolder <- list.files(path = databasePath(NULL),
+                              pattern = paste0(speaker),
+                              ignore.case = T)
+  audioFolder <- speaker_fileInventories$`Folder 2`
+  speakerPath <- paste0(databasePath(paste0(speakerFolder,"/",
+                                        audioFolder, "/")))
+  
+  # Finding the speakers' .wav file for the target recording
+  files <- list.files(path = speakerPath,
+                      ignore.case = T)
+  
+  wavFiles <- files[grepl(pattern = ".wav",
+                               x = files)]
+  wavFile <- wavFiles[grepl(pattern = speaker_fileInventories$`Sentence Repetition`,
+                            ignore.case = T,
+                            x = wavFiles)]
+  
+  # Specifying the names of the formant files
+  formantFile <- gsub(pattern = ".wav",
+                      replacement = ".Formant",
+                      x = wavFile)
+  formantTableFile <- gsub(pattern = ".Formant",
+                      replacement = "_formantTable.txt",
+                      x = formantFile)
+  
+  completedFormantFiles <- list.files(path = "Data/RawData/SpeakerData/FormantData")
+  
+  Hz <- ifelse(sex == "F", 5500, 5000) %>%
+    as.numeric()
+  
+  
+  if (any(grepl(formantFile,completedFormantFiles)) != TRUE) {
+    PraatR::praat("To Formant (burg)...",
+                  arguments = list(0, 5, Hz, 0.025, 50),
+                  input = paste0(speakerPath,wavFile),
+                  output = paste0(projectPath(NULL), "/FormantData/",formantFile),
+                  overwrite = T)
+  }
+  
+# Specify the parameters for how the formant data should be summarized in a table
+TabulationArguments = list( TRUE, # Include frame number
+                            TRUE, # Include time
+                            3,    # Time decimals
+                            TRUE, # Include intensity
+                            3,    # Intensity decimals
+                            TRUE, # Include number of formants
+                            3,    # Frequency decimals
+                            TRUE )# Include bandwidths
+
+  
+if (any(grepl(formantTableFile,completedFormantFiles)) != TRUE) {
+# Summarize the formant object as a table 
+PraatR::praat( "Down to Table...",
+       arguments = TabulationArguments,
+       input = paste0(projectPath(NULL), "/FormantData/",formantFile),
+       output = paste0(projectPath(NULL), "/FormantData/",formantTableFile),
+       filetype = "tab-separated",
+       overwrite = TRUE
+      ) # End praat()
+  }
+  
+  
+  rm(speaker,
+     sex,
+     Hz,
+     speakerFolder,
+     audioFolder,
+     formantFile,
+     wavFile,
+     speakerPath,
+     files,
+     TabulationArguments,
+     formantTableFile)
+  
+  NC <- NC + 1
+}
+
+rm(NC)
+```
+
+## TF 32 Label Files
+This code block generates label (.lbl) files from the TextGrids created in PRAAT.
+```{r, eval=FALSE}
+textGrids <- list.files(path = "Data/RawData/SpeakerData/TextGrids",
+                        pattern = ".TextGrid")
+
+
+k <- 1
+
+while (k <= base::NROW(textGrids)) {
+file <- textGrids[k]
+
+segments <- rPraat::tg.read(fileNameTextGrid = paste0("Data/RawData/SpeakerData/TextGrids/",
+                                                      file))
+lblData <- segments$vowel %>%
+  as.data.frame() %>%
+  dplyr::select(t1:label) %>%
+  dplyr::mutate(t1 = t1*1000,
+                t2 = t2*1000,
+                t1 = round(t1, digits = 3),
+                t2 = round(t2, digits = 3),
+                label = str_remove(label, "\\.[^.]*$"),
+                label = base::tolower(label)) %>%
+  dplyr::filter(label != "")
+
+
+readr::write_delim(lblData,
+                    file = paste0("Data/RawData/SpeakerData/lblFiles/",
+                                  base::gsub(x = file,pattern = ".TextGrid", replacement = ".lbl")),
+                    col_names = FALSE)
+
+rm(file, segments, lblData)
+
+k <- k + 1
+}
+
+```
+
+
+## Target Segments
+This code block extracts the target acoustic and movement data. It saves the data in the AcousticSegments and MovementSegments in the RawData > SpeakerData folder.
+
+This data is used in the next section to collate all of the data.
+```{r}
+speakers <- rio::import(file = "Data/PreppedData/Speaker List.csv") %>%
+  dplyr::mutate(DatabaseID = as.factor(DatabaseID),
+                Group = as.factor(Group),
+                Sex = as.factor(Sex))
+
+# Find which files have already been generated
+completed <- list.files(path = "Data/RawData/SpeakerData/AcousticSegments") %>%
+  gsub(pattern = "_AcousticSegments.csv",
+       replacement = "_sync",
+       x = .) %>%
+  as.data.frame() %>%
+  dplyr::mutate(completed = TRUE) %>%
+  dplyr::rename(`Sentence Repetition` = 1)
+
+# Removing the completed speakers from this process
+speakers <- speakers %>%
+  base::merge(.,completed, all = TRUE) %>%
+  dplyr::mutate(completed = ifelse(is.na(completed),FALSE,TRUE)) %>%
+  dplyr::filter(completed == FALSE)
+
+
+fileInventories <- rio::import("/Volumes/Austin/Databases/CoarticData/File Inventories.xlsx")
+
+databasePath <- function(FileName){
+  if(is.null(FileName)) {
+    return(paste0("/Volumes/Austin/Databases/CoarticData"))
+  } else {
+    return(paste0("/Volumes/Austin/Databases/CoarticData/", FileName))
+  }
+}
+
+NC <- 1
+
+while (NC <= NROW(speakers)) {
+  # IDing Speaker & Pulling their info from the master File Inventories.xlsx
+  speaker <- speakers$DatabaseID[NC]
+  speaker_fileInventories <- fileInventories %>%
+    dplyr::filter(`Sub #` == speaker)
+  sex <- speaker_fileInventories$Sex
+  group <- speaker_fileInventories$Group
+  
+  # IDing TextGrid Files
+  if (speaker == "Sub25") {
+    sentRepFile <- "Sub25_1_014_sync"
+  } else {
+    sentRepFile <- speaker_fileInventories$`Sentence Repetition`
+  }
+  
+  textGridFile <- list.files(path = "Data/RawData/SpeakerData/TextGrids",
+                             pattern = sentRepFile,
+                             ignore.case = TRUE)
+  
+  # Reading TextGrid
+  tg <- rPraat::tg.read(paste0("Data/RawData/SpeakerData/TextGrids/",textGridFile))
+  
+  condition <- base::cbind(tg[["condition"]][["t1"]],
+                tg[["condition"]][["t2"]],
+                tg[["condition"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label)) %>%
+    dplyr::filter(label != "")
+  
+  phrase <- base::cbind(tg[["phrase"]][["t1"]],
+                tg[["phrase"]][["t2"]],
+                tg[["phrase"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label),
+                  condition = case_when(
+                    onset > condition$onset[condition$label == "conv"] &
+                      offset < condition$offset[condition$label == "conv"] ~ "conv",
+                    onset > condition$onset[condition$label == "moreclear"] &
+                      offset < condition$offset[condition$label == "moreclear"] ~ "moreClear",
+                    onset > condition$onset[condition$label == "lessclear"] &
+                      offset < condition$offset[condition$label == "lessclear"] ~ "lessClear",
+                  )) %>%
+    dplyr::filter(label != "") %>%
+    dplyr::group_by(condition) %>%
+    dplyr::mutate(phraseToken = make.unique(label)) %>%
+    dplyr::ungroup() %>%
+    dplyr::relocate(condition, .after = phraseToken)
+  
+  vowel <- base::cbind(tg[["vowel"]][["t1"]],
+                tg[["vowel"]][["t2"]],
+                tg[["vowel"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(DatabaseID = speaker,
+                  Group = group,
+                  onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label),
+                  condition = case_when(
+                    onset > condition$onset[condition$label == "conv"] &
+                      offset < condition$offset[condition$label == "conv"] ~ "conv",
+                    onset > condition$onset[condition$label == "moreclear"] &
+                      offset < condition$offset[condition$label == "moreclear"] ~ "moreClear",
+                    onset > condition$onset[condition$label == "lessclear"] &
+                      offset < condition$offset[condition$label == "lessclear"] ~ "lessClear",
+                  ),
+                  condition = as.factor(condition)) %>%
+    dplyr::filter(label != "") %>%
+    group_by(DatabaseID, condition) %>%
+    dplyr::mutate(token = make.unique(label),
+                  phrase = NA) %>%
+    dplyr::select(DatabaseID,Group,condition,phrase,label,token,onset,offset)
+  
+  # Assigning Phrase to each vowel
+  k <- 1
+  while(k <= NROW(vowel)) {
+    onset <- vowel$onset[k]
+    offset <- vowel$offset[k]
+    midpoint <- ((offset - onset)/2) + onset
+    targetPhrase <- phrase %>%
+      dplyr::filter(midpoint > onset & midpoint < offset) %>%
+      pull(phraseToken)
+    
+    vowel$phrase[k] <- targetPhrase
+    
+    k <- k + 1
+  }
+  rm(k)
+  
+  # Pulling the formant Data
+  formantFile <- list.files(path = "Data/RawData/SpeakerData/FBWFiles",
+             pattern = sentRepFile,
+             ignore.case = T)
+  
+  formants <- utils::read.delim(file = paste0("Data/RawData/SpeakerData/FBWFiles/",formantFile),
+                                header = F) %>%
+    dplyr::rename(time = 1,
+                  F1 = 2,
+                  F2 = 3,
+                  F3 = 4) %>%
+    dplyr::select(time, F1, F2, F3) %>%
+    dplyr::mutate(time = time/1000,
+                  F1 = F1*1000,
+                  F2 = F2*1000,
+                  F3 = F3*1000)
+  
+  # Pulling the movement data
+  speakerFolder <- list.files(paste0(databasePath(NULL),"/"),
+             pattern = paste0(speaker),
+             ignore.case = TRUE)
+  decoupledFile <- list.files(paste0(databasePath(speakerFolder),"/Decoupled Movement/"), 
+             pattern = gsub(sentRepFile, pattern = "_sync", replacement = ""),
+             ignore.case = TRUE)
+  
+  movement <- rio::import(paste0(paste0(databasePath(speakerFolder),
+                                        "/Decoupled Movement/"),
+                                 decoupledFile))
+  
+  
+  k <- 1
+  while(k <= nrow(vowel)) {
+    
+    targetAcoustic <- formants %>%
+      dplyr::filter(time >= vowel$onset[k]) %>%
+      dplyr::filter(time <= vowel$offset[k]) %>%
+      dplyr::mutate(DatabaseID = vowel$DatabaseID[k],
+                    Group = vowel$Group[k],
+                    condition = vowel$condition[k],
+                    phrase = vowel$phrase[k],
+                    label = vowel$label[k],
+                    token = vowel$token[k]) %>%
+      dplyr::relocate(DatabaseID:token, .before = time)
+    
+    targetMovement <- movement %>%
+      dplyr::filter(time >= vowel$onset[k]) %>%
+      dplyr::filter(time <= vowel$offset[k]) %>%
+      dplyr::mutate(DatabaseID = vowel$DatabaseID[k],
+                    Group = vowel$Group[k],
+                    condition = vowel$condition[k],
+                    phrase = vowel$phrase[k],
+                    label = vowel$label[k],
+                    token = vowel$token[k]) %>%
+      dplyr::relocate(DatabaseID:token, .before = time)
+    
+    if(k == 1) {
+      speakerAcoustic <- targetAcoustic
+      speakerMovement <- targetMovement
+    } else {
+      speakerAcoustic <- rbind(speakerAcoustic, targetAcoustic)
+      speakerMovement <- rbind(speakerMovement, targetMovement)
+    }
+    
+    rm(targetAcoustic, targetMovement)
+    k <- k + 1
+  }
+  
+  # Saving the Acoustic Segments
+  dir.create("Data/RawData/SpeakerData/AcousticSegments",
+             showWarnings = F)
+  rio::export(x = speakerAcoustic,
+              file = paste0("Data/RawData/SpeakerData/AcousticSegments/",
+                            gsub(pattern = "_sync",
+                                 replacement = "_AcousticSegments.csv",
+                                 x = sentRepFile)))
+  
+  # Saving the Movement Segments
+  dir.create("Data/RawData/SpeakerData/MovementSegments",
+             showWarnings = F)
+  rio::export(x = speakerMovement,
+              file = paste0("Data/RawData/SpeakerData/MovementSegments/",
+                            gsub(pattern = "_sync",
+                                 replacement = "_MovementSegments.csv",
+                                 x = sentRepFile)))
+  
+  NC <- NC + 1
+}
+
+print("Done!")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+```
+
+## Collate Data
+This block of code compiles all of the acoustic & movement data.
+```{r}
+# Creating Compiled Data
+dir.create(path = "Data/PreppedData/CollatedData",
+           showWarnings = F)
+
+# Acoustic Segments
+file_names <- paste0("Data/RawData/SpeakerData/AcousticSegments/",
+                     dir(path = "Data/RawData/SpeakerData/AcousticSegments"))
+allAcousticSegments <- base::do.call(rbind,lapply(file_names,read.csv)) %>%
+    dplyr::filter(label != "ksent")
+
+
+rio::export(x = allAcousticSegments,
+            file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv")
+
+# Movement Segments
+file_names <- paste0("Data/RawData/SpeakerData/MovementSegments/",
+                     dir(path = "Data/RawData/SpeakerData/MovementSegments"))
+allMovementSegments <- base::do.call(rbind,lapply(file_names,read.csv))
+
+rio::export(x = allMovementSegments,
+            file = "Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv")
+```
+
+### Visualizing F1 & F2 Plots
+```{r}
+acousticData <- rio::import("Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label != "ksent")
+
+speakers <- unique(acousticData$DatabaseID) %>%
+  as.data.frame() %>%
+  dplyr::rename(DatabaseID = 1)
+
+NC <- 1
+while(NC <= NROW(speakers)) {
+  speaker <- speakers$DatabaseID[NC]
+  
+  speakerAcoData <- acousticData %>%
+    dplyr::filter(DatabaseID == speaker) %>%
+    dplyr::filter(label != "v") %>%
+    dplyr::filter(label != "V") %>%
+    dplyr::mutate(vowelRep = base::sub(pattern = ".*[.]",
+                                         replacement = "",
+                                         x = token),
+                  vowelRep = as.numeric(vowelRep) + 1,
+                  vowelRep = case_when(
+                    is.na(vowelRep) ~ 1,
+                    TRUE ~ vowelRep,
+                  )) %>%
+    dplyr::group_by(DatabaseID,condition,token) %>%
+           dplyr::mutate(nTime = time - min(time)) %>%
+    dplyr::ungroup() %>%
+    dplyr::relocate(nTime, .after = time) %>%
+    dplyr::relocate(vowelRep, .after = token)
+  
+  speakerAcoData_long <- speakerAcoData %>%
+           dplyr::select(condition,
+                         label,
+                         vowelRep,
+                         nTime,
+                         F1,
+                         F2) %>%
+    tidyr::pivot_longer(cols = F1:F2,
+                        values_to = "Hz",
+                        names_to = "Formant")
+  
+  ggplot(data = speakerAcoData_long) +
+    aes(x = nTime,
+        y = Hz,
+        group = Formant,
+        color = condition) +
+    geom_point() +
+    facet_grid(vowelRep ~ label)
+  
+  
+  NC <- NC + 1
+}
+```
+
+# Target Measures
+
+## Descriptives: Speaker Demographics
+```{r}
+# This code loads the speaker list and calculates the N, and mean and sd of speaker ages.
+speakers <- rio::import(file = "Data/PreppedData/Speaker List.csv")
+
+# Distinguish Database.ID from Study.ID
+speakerList <- speakers %>%
+  #dplyr::rename(Database.ID = Speaker) %>%
+  dplyr::arrange(Sex) %>%
+  dplyr::arrange(Group) %>%
+  dplyr::group_by(Group, Sex) %>% 
+  dplyr::mutate(row_number = dplyr::row_number()) %>%
+  dplyr::mutate(row_number = sprintf("%02d",row_number)) %>%
+  dplyr::ungroup(Group) %>% 
+  tidyr::unite(Study.ID, Group,Sex, row_number, remove = FALSE, sep = "") %>%
+  dplyr::rename(StudyID = Study.ID) %>%
+  dplyr::select(!c(row_number))
+
+
+# Mean
+suppressMessages(
+  speakerList %>%
+    dplyr::group_by(Group) %>%
+    dplyr::summarise(Age = base::mean(Age)) %>%
+    dplyr::mutate(Age = format(round(Age, 2), nsmall = 2)) %>%
+  tibble::rowid_to_column(var = "rowid") %>%
+  dplyr::select(!rowid) %>%
+    tibble::column_to_rownames(var = "Group") %>%
+    t() %>% as.data.frame()  ->
+    Age.mean
+)
+
+# SD
+suppressMessages(
+  speakerList %>%
+    dplyr::group_by(Group) %>%
+    dplyr::summarise(Age = stats::sd(Age)) %>%
+    dplyr::mutate(Age = format(round(Age, 2), nsmall = 2)) %>%
+  tibble::rowid_to_column(var = "rowid") %>%
+  dplyr::select(!rowid) %>%
+    tibble::column_to_rownames(var = "Group") %>%
+    t() %>% as.data.frame()  ->
+    Age.sd
+)
+
+# N
+suppressMessages(
+  speakerList %>%
+    dplyr::group_by(Group) %>%
+    dplyr::summarise(N = n()) %>%
+  tibble::rowid_to_column(var = "rowid") %>%
+  dplyr::select(!rowid) %>%
+    tibble::column_to_rownames(var = "Group") %>%
+    t() %>% as.data.frame()  ->
+    Group.N
+)
+
+base::cat("The NT speaking group has ", Group.N$HC," speakers, with an average age of ", Age.mean$HC," and a standard deviation of ", Age.sd$HC,".", "\n", "The PD speaking group has ", Group.N$PD," speakers, with an average age of ", Age.mean$PD," and a standard deviation of ", Age.sd$PD,".", sep = "")
+
+rm(Age.mean,Age.sd,Group.N, speakers)
+rio::export(speakerList,
+            file = "Data/PreppedData/Speaker List_Clean.csv")
+
+```
+
+## Temporal midpoint
+This script calculates the temporal midpoint for the corner vowels, which will be used to measure acoustic and kinematic VSA in the next section.
+```{r}
+VowelData_acoustic <- rio::import("Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label == "a" | label == "i" | label == "ae" | label == "o") %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(acoData = data)
+
+VowelData_kinematic <- rio::import("Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(label == "a" | label == "i" | label == "ae" | label == "o") %>% 
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(ctb_x = scale(tb_x, center = T, scale = F),
+                ctb_y = scale(tb_y, center = T, scale = F)) %>%
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(kinData = data)
+
+vowelData_nested <- base::merge(VowelData_acoustic, VowelData_kinematic)
+
+
+tempMid <- function(data,measure) {
+
+  tempMid_data <- data %>%
+    dplyr::mutate(tempMid = (max(time, na.rm = T) - min(time, na.rm = T)) / 2 + min(time, na.rm = T),
+                  tempMid_diff = abs(time - tempMid)) %>%
+    dplyr::filter(which.min(tempMid_diff) == row_number())
+
+    tempMid_data <- tempMid_data %>%
+    pull({{measure}}) %>%
+    as.numeric()
+    
+   return(tempMid_data)
+
+}
+
+# apply the function to each group defined by DatabaseID, condition, and token
+vowelData_tempMid <- vowelData_nested %>%
+  dplyr::mutate(time_tempMid = map(acoData, tempMid, measure = time),
+                F1_tempMid = map(acoData, tempMid, measure = F1),
+                F2_tempMid = map(acoData, tempMid, measure = F2),
+                F3_tempMid = map(acoData, tempMid, measure = F3),
+                TF_x_tempMid = map(kinData, tempMid, measure = tf_x),
+                TF_y_tempMid = map(kinData, tempMid, measure = tf_y),
+                TB_x_tempMid = map(kinData, tempMid, measure = tb_x),
+                TB_y_tempMid = map(kinData, tempMid, measure = tb_y),
+                cTB_x_tempMid = map(kinData, tempMid, measure = ctb_x),
+                cTB_y_tempMid = map(kinData, tempMid, measure = ctb_y),
+                )
+
+rio::export(x = vowelData_tempMid %>%
+              dplyr::select(!acoData:kinData),
+            file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+
+```
+
+## Formant Checking
+```{r}
+formants <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
+    dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  ),
+                  phrase = base::sub(pattern = "[.].*",
+                                     replacement = "",
+                                     x = phrase)) %>%
+  dplyr::rename(F1 = F1_tempMid,
+                F2 = F2_tempMid,
+                TB_x = TB_x_tempMid,
+                TB_y = TB_y_tempMid,
+                cTB_x = cTB_x_tempMid,
+                cTB_y = cTB_y_tempMid,
+                ) %>%
+  dplyr::group_by(DatabaseID,
+                  Group,
+                  condition,
+                  label,
+                  ) %>%
+  dplyr::summarise(F1 = mean(F1, na.rm = T),
+                   F2 = mean(F2, na.rm = T),
+                   TB_x = mean(TB_x, na.rm = T),
+                   TB_y = mean(TB_y, na.rm = T),
+                   cTB_x = mean(cTB_x, na.rm = T),
+                   cTB_y = mean(cTB_y, na.rm = T),
+                   ) %>%
+  dplyr::select(!TB_x:cTB_y) %>%
+  tidyr::pivot_wider(names_from = label,
+                     values_from = c(F1, F2)) %>%
+  dplyr::mutate(check = F1_ae - F1_i)
+```
+
+## VSA
+This block calculates:
+(1) aVSA (acoustic VSA)
+(2) kVSA (kinematic VSA)
+
+```{r}
+vsa <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
+    dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  ),
+                  phrase = base::sub(pattern = "[.].*",
+                                     replacement = "",
+                                     x = phrase)) %>%
+  dplyr::rename(F1 = F1_tempMid,
+                F2 = F2_tempMid,
+                TB_x = TB_x_tempMid,
+                TB_y = TB_y_tempMid,
+                cTB_x = cTB_x_tempMid,
+                cTB_y = cTB_y_tempMid,
+                ) %>%
+  dplyr::group_by(DatabaseID,
+                  Group,
+                  condition,
+                  label,
+                  ) %>%
+  dplyr::summarise(F1 = mean(F1, na.rm = T),
+                   F2 = mean(F2, na.rm = T),
+                   TB_x = mean(TB_x, na.rm = T),
+                   TB_y = mean(TB_y, na.rm = T),
+                   cTB_x = mean(cTB_x, na.rm = T),
+                   cTB_y = mean(cTB_y, na.rm = T),
+                   ) %>%
+  dplyr::group_by(
+    DatabaseID,
+    Group,
+    condition,
+    ) %>%
+  # The cHull function calculates the VSA
+  dplyr::summarise(aVSA = cHull(F2, F1),
+                   kVSA = cHull(TB_x, TB_y),
+                   kVSA_centered = cHull(cTB_x, cTB_y),
+                   )
+
+
+rio::export(x = vsa,
+            file = "Data/PreppedData/CollatedData/allSpeakers_VSA.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+  
+```
+## /ai/ segments
+This segment of the script calculates:
+  (1) F2 Slope
+  (2) acoustic distance
+  (3) decoupled TB distance
+  (4) coupled TB distance
+  (5) jaw distance
+  (6) decoupled TB speed
+  (7) coupled TB speed
+  (8) jaw speed
+  
+```{r}
+source('Functions/MSL Tools.R')
+
+# Prepping and nesting the data
+aiData_acoustic <- rio::import("Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label == "ai")
+
+aiData_acoustic_nested <- aiData_acoustic %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(acoData = data)
+
+aiData_kinematic <- rio::import("Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(label == "ai")
+
+aiData_kinematic_nested <- aiData_kinematic %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(kinData = data)
+
+aiData_nested <- base::merge(aiData_acoustic_nested,
+                             aiData_kinematic_nested)
+
+rm(aiData_acoustic, aiData_acoustic_nested,
+   aiData_kinematic, aiData_kinematic_nested)
+
+exampleData <- aiData_nested[[7]][[1]] # conv
+exampleData <- aiData_nested[[7]][[6]] #lessClear
+data <- aiData_nested[[8]][[1]]
+
+# /ai/ Acoustic Analysis Function
+ai_aco <- function(data, measure) {
+  
+# Acoustic Distance ----
+  data <- data %>%
+    dplyr::filter(F2 != 0) %>%
+    dplyr::mutate(F2_z = abs(scale(F2)),
+                  F1_z = abs(scale(F1))) %>%
+    # this gets rid of F2 outliers that were missed in smoothing
+    dplyr::filter(F2_z < 2) #%>%
+    #dplyr::mutate(F1 = ifelse(F1_z >= 2,NA,F1))
+
+# F2 Slope ---
+## F1 Cubic
+fit1_F1 <- lm(F1 ~ poly(time,1), data = data)
+fit1_F1_sum <- summary(fit1_F1)
+fit1_F1_r2 <- fit1_F1_sum$r.squared
+
+fit2_F1 <- lm(F1 ~ poly(time,2), data = data)
+fit2_F1_sum <- summary(fit2_F1)
+fit2_F1_r2 <- fit2_F1_sum$r.squared
+
+fit3_F1 <- lm(F1 ~ poly(time,3), data = data)
+fit3_F1_sum <- summary(fit3_F1)
+fit3_F1_r2 <- fit3_F1_sum$r.squared
+
+## F2 Cubic
+fit1_F2 <- lm(F2 ~ poly(time,1), data = data)
+fit1_F2_sum <- summary(fit1_F2)
+fit1_F2_r2 <- fit1_F2_sum$r.squared
+
+fit2_F2 <- lm(F2 ~ poly(time,2), data = data)
+fit2_F2_sum <- summary(fit2_F2)
+fit2_F2_r2 <- fit2_F2_sum$r.squared
+
+fit3_F2 <- lm(F2 ~ poly(time,3), data = data)
+fit3_F2_sum <- summary(fit3_F2)
+fit3_F2_r2 <- fit3_F2_sum$r.squared
+
+bestFit <- which.max(c(fit1_F2_r2,fit2_F2_r2,fit3_F2_r2))
+
+if (bestFit == 1) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit1_F2, data = .),
+                  pred_F1 = predict(fit1_F1, data = .),
+                  bestFit = "linear")
+} else if (bestFit == 2) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit2_F2, data = .),
+                  pred_F1 = predict(fit2_F1, data = .),
+                  bestFit = "quadratic")
+} else if (bestFit == 3) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit3_F2, data = .),
+                  pred_F1 = predict(fit3_F1, data = .),
+                  bestFit = "cubic")
+}
+
+onset <- data$time[which.min(data$pred_F2)]
+offset <- data$time[which.max(data$pred_F2)]
+
+if (onset < offset) {
+  ai <- data %>%
+    dplyr::filter(F2 > 5) %>%
+    dplyr::filter(time > onset) %>%
+    dplyr::filter(time < offset)
+} else {
+  ai <- data %>%
+    dplyr::filter(F2 > 5)
+}
+
+aiMeasures <- data_frame() %>%
+  add_row() %>%
+  dplyr::mutate(
+    onset = min(ai$time),
+    offset = max(ai$time),
+    duration = offset - onset,
+    highF2_F2 = base::max(ai$F2),
+    highF2_F1 = first(ai$F1[ai$F2 == base::max(ai$F2)]),
+    lowF2_F2 = base::min(ai$F2),
+    lowF2_F1 = first(ai$F1[ai$F2 == base::min(ai$F2)]),
+    extent = highF2_F2 - lowF2_F2,
+    F2_Slope = extent/(duration*1000),
+    bestFit = unique(ai$bestFit))
+
+    aiMeasures <- aiMeasures %>%
+    pull({{measure}})
+    
+   return(aiMeasures)
+
+}
+
+ai_kin <- function(data, measure) {
+  
+# Kinematic Distance ----
+  onsetData <- data %>%
+    dplyr::filter(row_number() == which.min(data$time))
+  
+  offsetData <- data %>%
+    dplyr::filter(row_number() == which.max(data$time))
+  
+# Speed
+  data <- data %>%
+    dplyr::mutate(time_diff = diff(c(NA,time)),
+                  TB_dist = c(NA,base::sqrt(diff(.$tb_x)^2 + diff(.$tb_y)^2)),
+                  TB_speed = TB_dist/time_diff,
+                  dTB_dist = c(NA,base::sqrt(diff(.$decoupled_tb_x)^2 + diff(.$decoupled_tb_y)^2)),
+                  dTB_speed = dTB_dist/time_diff,
+                  Jaw_dist = c(NA,base::sqrt(diff(.$jaw_x)^2 + diff(.$jaw_y)^2)),
+                  Jaw_speed = Jaw_dist/time_diff,
+                  )
+    
+  
+aiMeasures <- data_frame() %>%
+  add_row() %>%
+  dplyr::mutate(
+    onset = min(data$time),
+    offset = max(data$time),
+    duration = offset - onset,
+    # X and Y for Kinematic Distance
+    onset_TB_x = onsetData$tb_x,
+    onset_TB_y = onsetData$tb_y,
+    offset_TB_x = offsetData$tb_x,
+    offset_TB_y = offsetData$tb_y,
+    # TB measures
+    TB_speedAvg = base::mean(data$TB_speed, na.rm = T),
+    TB_speedMax = base::max(data$TB_speed, na.rm = T),
+    TB_distance = base::sum(data$TB_dist, na.rm = T),
+    TB_displacement = pull(euclideanDistance(x1 = onsetData$tb_x,
+                                        y1 = onsetData$tb_y,
+                                        x2 = offsetData$tb_x,
+                                        y2 = offsetData$tb_y)),
+    # dTB measures
+    dTB_speedAvg = base::mean(data$dTB_speed, na.rm = T),
+    dTB_speedMax = base::max(data$dTB_speed, na.rm = T),
+    dTB_distance = base::sum(data$dTB_dist, na.rm = T),
+    dTB_displacement = pull(euclideanDistance(x1 = onsetData$decoupled_tb_x,
+                                        y1 = onsetData$decoupled_tb_y,
+                                        x2 = offsetData$decoupled_tb_x,
+                                        y2 = offsetData$decoupled_tb_y)),
+    # Jaw measures
+    Jaw_speedAvg = base::mean(data$Jaw_speed, na.rm = T),
+    Jaw_speedMax = base::max(data$Jaw_speed, na.rm = T),
+    Jaw_distance = base::sum(data$Jaw_dist, na.rm = T),
+    Jaw_displacement = pull(euclideanDistance(x1 = onsetData$jaw_x,
+                                        y1 = onsetData$jaw_y,
+                                        x2 = offsetData$jaw_x,
+                                        y2 = offsetData$jaw_y)),
+    )
+    
+
+    aiMeasures <- aiMeasures %>%
+    pull({{measure}})
+    
+   return(aiMeasures)
+
+}
+
+# /ai/ Acoustic Analysis
+
+# apply the function to each group defined by DatabaseID, condition, and token
+aiData_Measures_nested <- aiData_nested %>%
+  dplyr::mutate(
+    # Acoustic Temporal Info
+    onset = map(acoData, ai_aco, measure = onset),
+    offset = map(acoData, ai_aco, measure = offset),
+    duration = map(acoData, ai_aco, measure = duration),
+    # F1 and F2 used to measure acoDistance
+    highF2_F1 = map(acoData, ai_aco, measure = highF2_F1),
+    highF2_F2 = map(acoData, ai_aco, measure = highF2_F2),
+    lowF2_F1 = map(acoData, ai_aco, measure = lowF2_F1),
+    lowF2_F2 = map(acoData, ai_aco, measure = lowF2_F2),
+    # F2 Slope
+    extent = map(acoData, ai_aco, measure = extent),
+    F2_Slope = map(acoData, ai_aco, measure = F2_Slope),
+    bestFit = map(acoData, ai_aco, measure = bestFit),
+    # X and Y used to measure kinDistance
+    onset_TB_x = map(kinData, ai_kin, measure = onset_TB_x),
+    onset_TB_y = map(kinData, ai_kin, measure = onset_TB_y),
+    offset_TB_x = map(kinData, ai_kin, measure = offset_TB_x),
+    offset_TB_y = map(kinData, ai_kin, measure = offset_TB_y),
+    # TB Measures
+    TB_speedAvg = map(kinData, ai_kin, measure = TB_speedAvg),
+    TB_speedMax = map(kinData, ai_kin, measure = TB_speedMax),
+    TB_distance = map(kinData, ai_kin, measure = TB_distance),
+    TB_displacement = map(kinData, ai_kin, measure = TB_displacement),
+    # dTB Measures
+    dTB_speedAvg = map(kinData, ai_kin, measure = dTB_speedAvg),
+    dTB_speedMax = map(kinData, ai_kin, measure = dTB_speedMax),
+    dTB_distance = map(kinData, ai_kin, measure = dTB_distance),
+    dTB_displacement = map(kinData, ai_kin, measure = dTB_displacement),
+    # Jaw Measures
+    Jaw_speedAvg = map(kinData, ai_kin, measure = Jaw_speedAvg),
+    Jaw_speedMax = map(kinData, ai_kin, measure = Jaw_speedMax),
+    Jaw_distance = map(kinData, ai_kin, measure = Jaw_distance),
+    Jaw_displacement = map(kinData, ai_kin, measure = Jaw_displacement),
+    )
+
+aiData_Measures <- aiData_Measures_nested %>%
+  dplyr::select(!acoData:kinData) %>%
+  unnest() %>%
+  dplyr::mutate(acoDistance = pull(euclideanDistance(x1 = highF2_F2,
+                                                y1 = highF2_F1,
+                                                x2 = lowF2_F2,
+                                                y2 = lowF2_F1)),
+                kinDistance = pull(euclideanDistance(x1 = onset_TB_x,
+                                                y1 = onset_TB_y,
+                                                x2 = offset_TB_x,
+                                                y2 = offset_TB_y)))
+
+
+rio::export(x = aiData_Measures,
+            file = "Data/PreppedData/CollatedData/allSpeakers_aiMeasures.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+```
+
+Plot some samples from the nested data
+```{r, eval = F}
+# Plot Samples
+exampleData <- aiData_Measures[[7]][[489]] %>%
+  dplyr::filter(F2 != 0) %>%
+  dplyr::mutate(F2_z = abs(scale(F2)))
+exampleData <- aiData_Measures[[7]][[450]] %>%
+  dplyr::filter(F2 != 0) %>%
+  dplyr::mutate(F2_z = abs(scale(F2)))
+
+exampleData <- aiData_Measures[[7]][[57]] %>%
+  dplyr::mutate(roll_f = zoo::rollmean(F2, k = 2, na.pad = T, allign = "left"))
+
+exampleData <- aiData_Measures[[7]][[418]] %>%
+    dplyr::filter(F2 != 0) %>%
+  dplyr::mutate(F2_z = abs(scale(F2))) %>%
+ dplyr::filter(F2_z < 2)
+
+ggplot(data = exampleData) + # %>%
+         #dplyr::filter(F2_z < 2),) +
+  aes(x = time,
+      y = F2) +
+  geom_point() +
+  geom_smooth(method = "lm",
+              formula = y ~ poly(x, 3))
+
+simpleMeasures %>%
+  dplyr::group_by(Group, condition) %>%
+  dplyr::summarise(F2_Slope_m = mean(F2_Slope),
+                   extent_m = mean(extent),
+                   duration_m = mean(duration))
+
+```
+
+## Plots for /ai/
+This section creates plots for the acoustic and movement /ai/ segments.
+```{r}
+
+# Loading the data
+speakers <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv")
+
+## Intelligibility Data
+intData <- rio::import("Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
+  dplyr::filter(ratingType == "Int") %>%
+  dplyr::rename(DatabaseID = SpeakerID,
+                condition = Condition,
+                int = M) %>%
+  dplyr::group_by(DatabaseID, condition) %>%
+  dplyr::mutate(phrase = make.unique(Sent)) %>%
+  dplyr::select(DatabaseID, condition,phrase, rep, int)
+
+## Slope Data
+F2_SlopeData <- rio::import("Data/PreppedData/CollatedData/allSpeakers_aiMeasures.csv") %>%
+  dplyr::select(DatabaseID:token,F2_Slope) %>%
+  dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  )) %>%
+  base::merge(., intData) %>%
+  dplyr::mutate(label = paste0("F2 Slope = ",format(round(F2_Slope, 2), nsmall = 2),
+                               ",\nInt = ", format(round(int, 2), nsmall = 2)),
+                )
+
+## Acoustic /ai/ Segments
+aiData_acoustic <- rio::import("Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label == "ai") %>%
+
+# Predicting
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>%
+  # removing F2 values that are 0
+  dplyr::filter(F2 != 0) %>%
+  # this gets rid of outliers that were missed in smoothing
+  dplyr::mutate(F2_z = abs(scale(F2))) %>%
+  dplyr::filter(F2_z < 2) %>%
+  # Nesting to calculate the predictions
+  nest() %>% 
+  mutate(model = map(data, ~lm(F2 ~ poly(time,3), data = .)), 
+         fitted = map(model, predict)) %>% 
+  unnest(data, fitted) %>%
+  dplyr::select(!model)
+
+# The loop for the plot
+NC <- 1
+while (NC <= NROW(speakers)) {
+  DatabaseID <- speakers$DatabaseID[NC]
+  SpeakerID <- speakers$StudyID[NC]
+  
+  speakerData <- aiData_acoustic %>%
+    dplyr::filter(DatabaseID == speakers$DatabaseID[NC]) %>%
+    dplyr::mutate(condition = factor(condition, 
+                                     levels = c("conv",
+                                                "moreClear",
+                                                "lessClear"),
+                                     labels = c("Conversational",
+                                                "More Clear",
+                                                "Less Clear")),
+      rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  ),
+                  nTime = (time - min(time)) * 1000)
+  
+  # Finding the active segment, which F2 slope is calculated from
+  speakerData <- speakerData %>%
+    group_by(DatabaseID,Group,condition,phrase,label,token) %>%
+    dplyr::mutate(F2_min = nTime[fitted == base::min(fitted)],
+                  F2_max = nTime[fitted == base::max(fitted)],
+                  ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(active = ifelse(nTime >= F2_min & nTime <= F2_max,TRUE, FALSE)) %>%
+    dplyr::select(!F2_min:F2_max)
+  
+  # Plot
+  F2_Slope_Labels <- F2_SlopeData %>%
+    dplyr::filter(DatabaseID == speakers$DatabaseID[NC]) %>%
+    dplyr::mutate(condition = factor(condition, 
+                                     levels = c("conv",
+                                                "moreClear",
+                                                "lessClear"),
+                                     labels = c("Conversational",
+                                                "More Clear",
+                                                "Less Clear")),
+                  )
+  
+  speakerData %>%
+  ggplot() +
+    aes(x = nTime,
+        y = F2,
+        ) +
+    facet_grid(rep ~ condition) +
+    # Plotting F2
+    geom_point(aes(color = active)) +
+    # Plotting F1
+    geom_point(aes(x = nTime,
+                   y = F1),
+               color = "gray") +
+    geom_smooth(method = "lm",
+                formula = y ~ poly(x, 3),
+                alpha = .3,
+                color = "grey") +
+    geom_text(data = F2_Slope_Labels, aes(label = label,
+                  x = -Inf,
+                  y = Inf,
+                  ),
+            hjust = 0,
+            vjust = 1,
+            size = 2) +
+    labs(x = "Time (ms)", y = "F2") +
+    ggtitle(label = paste0(SpeakerID, " (",DatabaseID,")")) +
+    theme_classic() +
+    guides(color=guide_legend(title="Active"))
+  
+  ggsave(filename = paste0(SpeakerID,"_",DatabaseID,"_F2 Slopes.png"),
+         path = "Data/Plots/Slope Segments",
+         height = 6,
+         width = 7,
+         units = "in")
+  
+  NC <- NC + 1
+  rm(speakerData, F2_Slope_Labels, SpeakerID, DatabaseID)
+
+  }
+
+```
+
+## Final Measures
+This block cleans up the final Target Measures for analysis
+```{r}
+speakers <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(DatabaseID:Age)
+
+listenerRatings <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
+  dplyr::select(!1) %>%
+  tidyr::pivot_wider(id_cols = c(DatabaseID, condition,Sent, rep),
+                     names_from = ratingType,
+                     values_from = c(M,SD,Count)) %>%
+  dplyr::rename(AP_M = M_AP,
+                AP_SD = SD_AP,
+                AP_N = Count_AP,
+                Int_M = M_Int,
+                Int_SD = SD_Int,
+                Int_N = Count_Int,
+                ) %>%
+  dplyr::group_by(DatabaseID, condition, rep) %>%
+  dplyr::summarise(Int_M = mean(Int_M, na.rm = T),
+                   Int_N = sum(Int_N),
+                   AP_M = mean(AP_M, na.rm = T),
+                   AP_N = sum(AP_N),
+                   )
+  
+# /ai/ measures
+aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_aiMeasures.csv") %>%
+  dplyr::select(DatabaseID:duration,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedAvg,
+                TB_speedMax,
+                TB_distance,
+                TB_displacement,
+                #dTB_speedAvg,
+                #dTB_speedMax,
+                #dTB_distance,
+                #Jaw_speedAvg,
+                #Jaw_speedMax,
+                ) %>%
+  base::merge(., speakers) %>%
+  dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  )) %>%
+  dplyr::relocate(StudyID:Age, .after = DatabaseID) %>%
+  base::merge(., listenerRatings, all = T) %>%
+  dplyr::relocate(rep, .after = phrase) %>%
+  dplyr::relocate(condition, .after = Group) %>%
+  
+  # Removing instances of "-Inf" and replacing it with NA
+  dplyr::mutate(
+    TB_speedMax = ifelse(TB_speedMax == "-Inf",NA,TB_speedMax),
+    #dTB_speedMax = ifelse(dTB_speedMax == "-Inf",NA,dTB_speedMax),
+    TB_distance = ifelse(TB_distance == 0,NA,TB_distance),
+    #dTB_distance = ifelse(dTB_distance == 0,NA,dTB_distance),
+    ) %>%
+  
+  # Removing an outlier for TB_speedMax
+  dplyr::mutate(TB_speedMax = ifelse(TB_speedMax > 600,NA,TB_speedMax)) %>%
+  
+  # Removing instances of empty rows
+  dplyr::filter(!is.na(onset))
+
+  rio::export(x = aiMeasures, file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
+  
+# VSA Measures ----
+  vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_VSA.csv") %>%
+    base::merge(., speakers) %>%
+    base::merge(., listenerRatings %>%
+                  dplyr::group_by(DatabaseID,condition) %>%
+                  dplyr::summarise(
+                    Int_M = base::mean(Int_M, na.rm = T),
+                    Int_N = base::sum(Int_N, na.rm = T),
+                    AP_M = base::mean(AP_M, na.rm = T),
+                    AP_N = base::sum(AP_N, na.rm = T),
+                    )) %>%
+    dplyr::select(DatabaseID, StudyID, Group, Sex, Age, condition, aVSA:kVSA,Int_M:AP_N)
+  
+  rio::export(x = vsaMeasures, file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv")
+```
