@@ -833,9 +833,10 @@ descriptives <- rbind(group,
 }
 
 
-apa_emmsPairs <- function(emmsPair, sex) {
+apa_emmsPairs <- function(emmsPair, sex, Condition) {
   summary_table <- summary(emmsPair, infer = TRUE) %>%
-    dplyr::filter(Sex == sex)
+    dplyr::filter(Sex == sex) %>%
+    dplyr::filter(condition == condition)
   
 if(summary_table$p.value < .001) {
   p <- "p < .001"
@@ -859,6 +860,32 @@ if(summary_table$p.value < .001) {
   return(output)
 }
 
+apa_s1_emmPairs <- function(emmsPair, sex, Condition) {
+  summary_table <- summary(emmsPair, infer = TRUE) %>%
+    dplyr::filter(Sex == sex) %>%
+    dplyr::filter(condition == Condition)
+  
+  if(summary_table$p.value < .001) {
+  p <- "p<.001"
+} else {
+    p <- paste0("p=",
+                round(summary_table$p.value, digits = 3))
+  }
+  
+  output <- paste(
+    sex,
+    ", HC - PD: (",
+    "t(",
+    round(summary_table$df, digits = 2),
+    ")=",
+    as.numeric(round(summary_table$z.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  
+  return(output)
+}
 
 ```
 
@@ -1071,6 +1098,11 @@ emms_condition <- emmeans(AP_finalModel, ~ condition | Sex*Group)
 # Compare EMMs for Group and Sex
 pairs(emms_group)
 pairs(emms_condition)
+
+# APA Reporting
+apa_s1_emmPairs(pairs(emms_group),
+                sex = "F",
+                Condition = "conv")
 
 # Saving the model
 base::saveRDS(
