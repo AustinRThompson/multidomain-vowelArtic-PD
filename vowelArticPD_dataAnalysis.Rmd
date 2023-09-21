@@ -872,17 +872,32 @@ apa_s1_emmPairs <- function(emmsPair, sex, Condition) {
                 round(summary_table$p.value, digits = 3))
   }
   
+  if("t.ratio" %in% colnames(summary_table)) {
   output <- paste(
     sex,
     ", HC - PD: (",
     "t(",
     round(summary_table$df, digits = 2),
     ")=",
+    as.numeric(round(summary_table$t.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  }
+  
+  
+  if("z.ratio" %in% colnames(summary_table)) {
+  output <- paste(
+    sex,
+    ", HC - PD: (",
+    "z = (",
     as.numeric(round(summary_table$z.ratio, 2)),
     ", ",
     p,
     ")",
     sep = "")
+  }
   
   return(output)
 }
@@ -1199,6 +1214,14 @@ emms_condition <- emmeans(aVSA_finalModel, ~ condition | Sex*Group)
 pairs(emms_group)
 pairs(emms_condition)
 
+# APA Reporting
+apa_s1_emmPairs(pairs(emms_group),
+                sex = "F",
+                Condition = "conv")
+apa_s1_emmPairs(pairs(emms_group),
+                sex = "M",
+                Condition = "conv")
+
 # Saving the model
 base::saveRDS(
   object = aVSA_finalModel,
@@ -1289,6 +1312,14 @@ emms_condition <- emmeans(acoDistance_finalModel, ~ condition | Sex*Group)
 pairs(emms_group)
 pairs(emms_condition)
 
+# APA Reporting
+apa_s1_emmPairs(pairs(emms_group),
+                sex = "F",
+                Condition = "conv")
+apa_s1_emmPairs(pairs(emms_group),
+                sex = "M",
+                Condition = "conv")
+
 # Saving the model
 base::saveRDS(
   object = acoDistance_finalModel,
@@ -1366,6 +1397,18 @@ anova(F2_Slope_m2, F2_Slope_m3)
 F2_Slope_finalModel <- F2_Slope_m3
 
 summary(F2_Slope_finalModel)
+
+# Compute EMMs for Group and Sex
+emms_group <- emmeans(F2_Slope_finalModel, ~ Group | Sex*condition)
+emms_condition <- emmeans(F2_Slope_finalModel, ~ condition | Sex*Group)
+
+# APA Reporting
+apa_s1_emmPairs(pairs(emms_group),
+                sex = "F",
+                Condition = "conv")
+apa_s1_emmPairs(pairs(emms_group),
+                sex = "M",
+                Condition = "conv")
 
 # Saving the model
 base::saveRDS(
