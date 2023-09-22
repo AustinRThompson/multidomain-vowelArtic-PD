@@ -1125,58 +1125,6 @@ formants <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMi
   dplyr::mutate(check = F1_ae - F1_i)
 ```
 
-## Corner Dispersion
-```{r}
-cd <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
-    dplyr::mutate(rep = base::sub(pattern = ".*[.]",
-                                     replacement = "",
-                                     x = phrase),
-                  rep = as.numeric(rep) + 1,
-                  rep = case_when(
-                    is.na(rep) ~ 1,
-                    TRUE ~ rep,
-                  ),
-                  phrase = base::sub(pattern = "[.].*",
-                                     replacement = "",
-                                     x = phrase)) %>%
-  dplyr::rename(F1 = F1_tempMid,
-                F2 = F2_tempMid,
-                TB_x = TB_x_tempMid,
-                TB_y = TB_y_tempMid,
-                ) 
-
-centers <- cd %>%
-  dplyr::group_by(DatabaseID,
-                  Group,
-                  condition,
-                  label,
-                  ) %>%
-  dplyr::summarise(F1 = mean(F1, na.rm = T),
-                   F2 = mean(F2, na.rm = T),
-                   TB_x = mean(TB_x, na.rm = T),
-                   TB_y = mean(TB_y, na.rm = T),
-                   ) %>%
-    dplyr::group_by(DatabaseID,
-                  Group,
-                  condition,
-                  ) %>%
-    dplyr::summarise(
-      cF1 = mean(F1, na.rm = T),
-      cF2 = mean(F2, na.rm = T),
-      cTB_x = mean(TB_x, na.rm = T),
-      cTB_y = mean(TB_y, na.rm = T),
-      ) %>%
-  dplyr::mutate(cTB_x = ifelse(cTB_x == "NaN",NA,cTB_x),
-                cTB_y = ifelse(cTB_y == "NaN",NA,cTB_y),)
-
-
-rio::export(x = vsa,
-            file = "Data/PreppedData/CollatedData/allSpeakers_VSA.csv")
-
-# Alert that the code is finished running
-beepr::beep(sound = 3)
-  
-```
 ## VSA
 This block calculates:
 (1) aVSA (acoustic VSA)
