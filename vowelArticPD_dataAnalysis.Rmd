@@ -1078,8 +1078,22 @@ emms_group <- emmeans(Int_finalModel, ~ Group | Sex*condition)
 emms_condition <- emmeans(Int_finalModel, ~ condition | Sex*Group)
 
 # Compare EMMs for Group and Sex
-pairs(emms_group)
-t <- summary(pairs(emms_condition))
+table_group <- summary(pairs(emms_group)) %>%
+    dplyr::mutate(
+    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+    apa = paste0(Sex, ", ",
+                 condition, ", ",
+                 contrast, ": z = ",
+                 round(z.ratio, digits = 2), ", ",
+                 ifelse(p.value < .001, "p < .001", paste0"p = ",round(p.value, digits = 3)))))
+table_groupCondition <- summary(pairs(emms_condition)) %>%
+  dplyr::mutate(
+    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+    apa = paste0(Sex, ", ",
+                             Group, ", ",
+                             contrast, ": z = ",
+                             round(z.ratio, digits = 2), ", ",
+                             ifelse(p.value < .001, "p < .001", round(p.value, digits = 3))))
 
 apa_s2_emmPairs(pairs(emms_condition),
                 Sex_Input = "M",
@@ -1281,6 +1295,65 @@ anova(aVSA_m2, aVSA_m3)
 ```{r}
 aVSA_finalModel <- aVSA_m3
 
+plotData <- modelData
+
+predictions  <- stats::predict(aVSA_finalModel, se = T)
+plotData$mpg   <- predictions$fit
+new_df$upper <- new_df$mpg + 1.96 * predictions$se.fit
+new_df$lower <- new_df$mpg - 1.96 * predictions$se.fit
+new_df$disp  <- factor(new_df$disp)
+
+aVSA_finalModel <- lmerTest::lmer(aVSA ~ condition*Group*Sex +
+                       (1 | StudyID),
+                     data = modelData %>%
+                       dplyr::mutate(condition = factor(condition,
+                                                        levels = c(
+                                                          "lessClear",
+                                                          "conv",
+                                                          "moreClear"),
+                                                        labels = c(
+                                                          "Less\nClear",
+                                                          "Conv",
+                                                          "More\nClear"
+                                                        )),
+                                     Sex = factor(Sex,
+                                                  levels = c("M", "F"),
+                                                  labels = c("Male Speakers",
+                                                             "Female Speakers"))))
+
+plots_aVSA <- sjPlot::plot_model(aVSA_finalModel,
+                   type = "int",
+                   show.values = TRUE)
+
+plot_aVSA <- plots_aVSA[[4]]$data %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear"))) %>%
+
+  ggplot() +
+  aes(
+    x = condition,
+    y = predicted,
+    color = group,
+  ) +
+  geom_line(aes(group = group),
+            position = position_dodge(width = .5),
+            alpha = .7) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
+                width = 0.0,
+                linewidth = .7,
+                position = position_dodge(width = .5)) +
+  geom_point(size = 3,
+             position = position_dodge(width = .5)) +
+  facet_wrap(~facet) +
+    theme_minimal() +
+  theme(panel.border = element_rect(fill = NA, color = "black"))
+plot_aVSA
+  
 summary(aVSA_finalModel)
 
 # Compute EMMs for Group and Sex
@@ -1288,16 +1361,22 @@ emms_group <- emmeans(aVSA_finalModel, ~ Group | Sex*condition)
 emms_condition <- emmeans(aVSA_finalModel, ~ condition | Sex*Group)
 
 # Compare EMMs for Group and Sex
-pairs(emms_group)
-pairs(emms_condition)
-
-# APA Reporting
-apa_s1_emmPairs(pairs(emms_group),
-                sex = "F",
-                Condition = "conv")
-apa_s1_emmPairs(pairs(emms_group),
-                sex = "M",
-                Condition = "conv")
+table_group_aVSA <- summary(pairs(emms_group)) %>%
+    dplyr::mutate(
+    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+    apa = paste0(Sex, ", ",
+                 condition, ", ",
+                 contrast, ": t = ",
+                 round(t.ratio, digits = 2), ", ",
+                 ifelse(p.value < .001, "p < .001", round(p.value, digits = 3))))
+table_groupCondition_aVSA <- summary(pairs(emms_condition)) %>%
+  dplyr::mutate(
+    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+    apa = paste0(Sex, ", ",
+                             Group, ", ",
+                             contrast, ": t = ",
+                             round(t.ratio, digits = 2), ", ",
+                             ifelse(p.value < .001, "p < .001", round(p.value, digits = 3))))
 
 # Saving the model
 base::saveRDS(
@@ -1410,8 +1489,12 @@ rm(modelData)
 
 ### 5. F2 Slope
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
 
 modelData <- aiMeasures
 
@@ -1503,8 +1586,12 @@ rm(modelData)
 ### 6. kVSA
 
 ```{r}
-vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv")  %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
 
 modelData <- vsaMeasures
 
@@ -1548,7 +1635,8 @@ anova(kVSA_m1, kVSA_m2)
 M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-kVSA_m3 <- stats::lm(kVSA ~ condition*Group*Sex,
+kVSA_m3 <- lmerTest::lmer(kVSA ~ condition*Group*Sex +
+                            (1|StudyID),
                          data = modelData)
 # Model summary
 summary(kVSA_m3)
@@ -1560,7 +1648,7 @@ anova(kVSA_m2, kVSA_m3)
 
 #### Final Model
 ```{r}
-kVSA_finalModel <- kVSA_m1
+kVSA_finalModel <- kVSA_m3
 
 summary(kVSA_finalModel)
 
@@ -1577,8 +1665,12 @@ rm(modelData)
 
 ### 7. Kin Distance
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
 
 modelData <- aiMeasures
 
@@ -1639,7 +1731,7 @@ anova(kinDistance_m2, kinDistance_m3)
 
 #### Final Model
 ```{r}
-kinDistance_finalModel <- kinDistance_m2
+kinDistance_finalModel <- kinDistance_m3
 
 summary(kinDistance_finalModel)
 
@@ -1656,8 +1748,12 @@ rm(modelData)
 
 ### 8. TB Speed Max
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
 
 modelData <- aiMeasures
 
@@ -1717,7 +1813,7 @@ anova(dTB_speedMax_m2, dTB_speedMax_m3)
 
 #### Final Model
 ```{r}
-TB_speedMax_finalModel <- TB_speedMax_m1
+TB_speedMax_finalModel <- TB_speedMax_m3
 
 summary(TB_speedMax_finalModel)
 
@@ -3837,4 +3933,290 @@ ggsave(filename = "S1_vsaComparison.png",
        scale = 1.7)
 ```
 
+# Tables
+## Emmeans Tables
+```{r}
+models <- list.files(path = "Data/Models/Study 1/")
+
+k <- 1
+while (k <= NROW(models)) {
+  targetModel <- readRDS(file = paste0("Data/Models/Study 1/",models[k]))
+  targetMeasure <- paste0(targetModel@call[["formula"]][[2]])
+  
+  # Compute EMMs for Group and Sex
+  emms_group <- emmeans(targetModel, ~ Group | Sex*condition)
+  emms_condition <- emmeans(targetModel, ~ condition | Sex*Group)
+
+  # Compare EMMs for Group and Sex
+  pairs(emms_group)
+  pairs(emms_condition)
+  
+  # Compare EMMs for Group and Sex
+  groupDiff <- summary(pairs(emms_group)) %>%
+    dplyr::rename(stat.value = 7) %>%
+      dplyr::mutate(
+        Measure = targetMeasure,
+        sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+        stat = ifelse(df == "Inf",
+                      paste0("z="),
+                      paste0("t=")),
+        apa = paste0(Sex, ", ",
+                     condition, ", ",
+                     contrast, ": ",
+                     stat, round(stat.value, digits = 2), ", ",
+                   ifelse(p.value < .001, "p<.001", paste0("p=",round(p.value, digits = 3)))),
+      apa = gsub(pattern = "0[.]", replacement = ".", apa)) %>%
+    dplyr::relocate(Measure, .before = contrast)
+  
+  conditionDiff <- summary(pairs(emms_condition)) %>%
+    dplyr::rename(stat.value = 7) %>%
+    dplyr::mutate(
+      Measure = targetMeasure,
+      sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+      stat = ifelse(df == "Inf",
+                    paste0("z="),
+                    paste0("t=")),
+      apa = paste0(Sex, ", ",
+                   Group, ", ",
+                   contrast, ": ",
+                   stat, round(stat.value, digits = 2), ", ",
+                   ifelse(p.value < .001, "p<.001", paste0("p=",round(p.value, digits = 3)))),
+      apa = gsub(pattern = "0[.]", replacement = ".", apa)) %>%
+    dplyr::relocate(Measure, .before = contrast)
+  
+  if (k == 1) {
+    table_groupDiff <- groupDiff
+    table_conditionDiff <- conditionDiff
+  } else {
+    table_groupDiff <- rbind(table_groupDiff, groupDiff)
+    table_conditionDiff <- rbind(table_conditionDiff, conditionDiff)
+  }
+  
+  k <- k + 1
+  rm(groupDiff, conditionDiff, targetMeasure, targetModel)
+}
+```
+
+### Group Constrasts
+```{r}
+table_groupDiff %>%
+  dplyr::select(Measure:condition, estimate, SE, stat.value, df, p.value, sig) %>%
+  dplyr::select(!contrast) %>%
+  dplyr::mutate(p.value = ifelse(p.value < .001,"<.001", round(p.value, digits = 3)),
+                p.value = gsub(p.value, pattern = "0[.]", replacement = ".")) %>%
+  tidyr::pivot_wider(
+    names_from = Sex,
+    values_from = c(estimate, SE, stat.value, p.value,df, sig)
+  ) %>%
+  dplyr::mutate(
+    condition = factor(condition,
+                       levels = c(
+                         "conv",
+                         "lessClear",
+                         "moreClear"
+                       ),
+                       labels = c(
+                         "Conversational",
+                         "Less Clear",
+                         "More Clear"
+                       )),
+    Measure = factor(Measure,
+                     levels = c(
+                       "Int",
+                       "AP",
+                       "aVSA",
+                       "acoDistance",
+                       "F2_Slope",
+                       "kVSA",
+                       "kinDistance",
+                       "TB_speedMax"
+                     ),
+                     labels = c(
+                       "Intelligibility (%)",
+                       "Articulatory Precision (%)",
+                       "Acoustic VSA (Hz^2)",
+                       "Acoustic Distance (Hz)",
+                       "F2 Slope (Hz/ms)",
+                       "Kinematic VSA (mm^2)",
+                       "Kinematic Distance (mm)",
+                       "TB Speed (mm/s)"
+                     ))) %>%
+  arrange(Measure) %>%
+  gt::gt(
+    rowname_col = "condition",
+    groupname_col = "Measure") %>%
+  
+  # Female Speakers Spanner
+  gt::tab_spanner(
+    label = "Female Speakers",
+    columns = c(estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F)
+  ) %>%
+  
+  # Male Speakers Spanner
+  gt::tab_spanner(
+    label = "Male Speakers",
+    columns = c(estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M)
+  ) %>%
+  gt::fmt_number(
+    columns = everything(),
+    decimals = 2
+  ) %>%
+  gt::fmt_number(
+    columns = c(p.value_M, p.value_F),
+    decimals = 3,
+  ) %>%
+  gt::cols_align(align = "right",
+                 columns = c(p.value_M, p.value_F)) %>%
+ 
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M),
+              rows = sig_M == TRUE)) %>%
+  
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F),
+              rows = sig_F == TRUE)) %>%
+  
+  # Rename Columns
+  gt::cols_label(
+    estimate_M = "Est",
+    SE_M = "SE",
+    stat.value_M = "F/Z Ratio",
+    df_F = "df",
+    p.value_M = "p",
+    estimate_F = "Est",
+    SE_F = "SE",
+    stat.value_F = "F/Z Ratio",
+    df_M = "df",
+    p.value_F = "p"
+  ) %>%
+  gt::cols_hide(columns = c(sig_M,sig_F)) %>%
+  gt::tab_options(row_group.as_column = TRUE)  %>%
+  gt::gtsave(filename = "Data/Tables/Supplemental Info_Group Contrasts.html")
+```
+
+### Condition Contrasts
+```{r}
+table_conditionDiff %>%
+  dplyr::select(Measure:Group, estimate, SE, stat.value, df, p.value, sig) %>%
+  dplyr::mutate(p.value = ifelse(p.value < .001,"<.001", round(p.value, digits = 3)),
+                p.value = gsub(p.value, pattern = "0[.]", replacement = ".")) %>%
+  tidyr::pivot_wider(
+    names_from = Sex,
+    values_from = c(estimate, SE, stat.value, p.value,df, sig)
+  ) %>%
+  dplyr::mutate(
+    Measure = factor(Measure,
+                     levels = c(
+                       "Int",
+                       "AP",
+                       "aVSA",
+                       "acoDistance",
+                       "F2_Slope",
+                       "kVSA",
+                       "kinDistance",
+                       "TB_speedMax"
+                     ),
+                     labels = c(
+                       "Intelligibility (%)",
+                       "Articulatory Precision (%)",
+                       "Acoustic VSA (Hz^2)",
+                       "Acoustic Distance (Hz)",
+                       "F2 Slope (Hz/ms)",
+                       "Kinematic VSA (mm^2)",
+                       "Kinematic Distance (mm)",
+                       "TB Speed (mm/s)"
+                     ))) %>%
+  arrange(Measure) %>%
+  gt::gt(
+    rowname_col = "contrast",
+    groupname_col = c("Measure")) %>%
+  
+  # Female Speakers Spanner
+  gt::tab_spanner(
+    label = "Female Speakers",
+    columns = c(estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F)
+  ) %>%
+  
+  # Male Speakers Spanner
+  gt::tab_spanner(
+    label = "Male Speakers",
+    columns = c(estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M)
+  ) %>%
+  gt::fmt_number(
+    columns = everything(),
+    decimals = 2
+  ) %>%
+  gt::fmt_number(
+    columns = c(p.value_M, p.value_F),
+    decimals = 3,
+  ) %>%
+  gt::cols_align(align = "right",
+                 columns = c(p.value_M, p.value_F)) %>%
+ 
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M),
+              rows = sig_M == TRUE)) %>%
+  
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F),
+              rows = sig_F == TRUE)) %>%
+  
+  # Rename Columns
+  gt::cols_label(
+    estimate_M = "Est",
+    SE_M = "SE",
+    stat.value_M = "F/Z Ratio",
+    df_F = "df",
+    p.value_M = "p",
+    estimate_F = "Est",
+    SE_F = "SE",
+    stat.value_F = "F/Z Ratio",
+    df_M = "df",
+    p.value_F = "p"
+  ) %>%
+  gt::cols_hide(columns = c(sig_M,sig_F)) %>%
+  gt::tab_options(row_group.as_column = TRUE) %>%
+  gt::gtsave(filename = "Data/Tables/Supplemental Info_Condition Contrasts.html")
+  
+```
 
