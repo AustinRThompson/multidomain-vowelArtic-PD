@@ -985,7 +985,7 @@ The first study examines group differences between PD and HC for the following m
 
 Alpha will be evaluated at the bonferonni corrected level of 0.0055.
 ```{r}
-alpha_s1 <- .05/8
+alpha_s1 <- .05/5
 
 # Prepping the model folders to be saved
 dir.create(path = "Data/Models/",showWarnings = F)
@@ -2065,79 +2065,65 @@ color_PD <- myPal[6]
 
 ## 1. Intelligibility
 ```{r}
-plot_Int_data <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
-  dplyr::select(!V1) %>%
-  dplyr::filter(ratingType == "Int") %>%
-  dplyr::rename(Int = Rating) %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M","F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   ))) %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(Int, na.rm = T),
-                   SE = plotrix::std.error(Int, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/Int_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
 
-plotData <- plot_Int_data
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
 
-lim_y <- c(0,
-          (base::max(plotData$upper) + base::max(plotData$upper)*.45))
-lim_group <- base::max(plotData$upper) + base::max(plotData$upper)*.10
-lim_group
-lim_condition_HC <- base::max(plotData$upper) + base::max(plotData$upper)*.25
-lim_condition_HC
-
-lim_condition_PD <- base::max(plotData$upper) + base::max(plotData$upper)*.40
-lim_condition_PD
+lim_y_int <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_int <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_int <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_int <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
 
 
   # Making the Plot
 plot_Int <- plotData %>%
   ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition) +
   
   # Line
   geom_line(
-    aes(color = Group,
-        group = Group),
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
     alpha = .6,
     ) +
   
   # Error Bars
   geom_errorbar(aes(
-    ymin = lower,
-    ymax = upper,
-    color = Group,
-    group = Group
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
     ),
-    width = .1,
+    position = position_dodge(width = .45),
+    width = 0,
     ) +
   
   # Point
   geom_point(
-    aes(color = Group,
-        group = Group),
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
     ) +
 
   # Adding significance bars - HC*Condition ----
-  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+  ggsignif::geom_signif(data = data.frame(group = c("Less\nClear",
                                           "Conv",
                                          "More\nClear")),
-                        aes(y_position = c(rep(lim_condition_HC, 6)),
+                        aes(y_position = c(rep(lim_condition_HC_int, 6)),
                             xmin = c(1.1, 2.1, NA, 1.1, 2.1, NA),
                             xmax = c(1.9, 2.9, NA, 1.9, 2.9, NA),
                             annotations = c("*", "*", NA, "*", "*", NA),
@@ -2148,10 +2134,10 @@ plot_Int <- plotData %>%
                         manual = T) +
   
   # Adding significance bars - PD*Condition ----
-  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+  ggsignif::geom_signif(data = data.frame(group = c("Less\nClear",
                                           "Conv",
                                          "More\nClear")),
-                        aes(y_position = c(rep(lim_condition_PD, 6)),
+                        aes(y_position = c(rep(lim_condition_PD_int, 6)),
                             xmin = c(1.1, 2.1, NA, 1.1, 2.1, NA),
                             xmax = c(1.9, 2.9, NA, 1.9, 2.9, NA),
                             annotations = c("*", "*", NA, "*", "*", NA),
@@ -2162,10 +2148,10 @@ plot_Int <- plotData %>%
                         manual = T) +
   
   # Adding significance bars - Group ----
-  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+  ggsignif::geom_signif(data = data.frame(group = c("Less\nClear",
                                           "Conv",
                                          "More\nClear")),
-                        aes(y_position = c(rep(lim_group, 6)),
+                        aes(y_position = c(rep(lim_group_int, 6)),
                             xmin = c(.9, 1.9, 2.9, NA, NA, NA),
                             xmax = c(1.1, 2.1, 3.1, NA, NA, NA),
                             annotations = c("*", "*", "*", NA, NA, NA),
@@ -2176,22 +2162,25 @@ plot_Int <- plotData %>%
                         manual = T) +
   
   # Facet by Sex
-  facet_grid(~Sex) +
+  facet_grid(~facet) +
   
   # Changing the y axis scale
-  coord_cartesian(ylim = lim_y) +
-  scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
+  coord_cartesian(ylim = lim_y_int) +
+  scale_y_continuous(breaks=c(0, 25, 50, 75, 100),
+                     minor_breaks = seq(0,100, (25/2))) +
   
   # Changing the theme, labels, and title
   theme_minimal() +
-  labs(y = "VAS Rating") +
+  labs(y = "VAS Rating",
+       color = "Group") +
   ggtitle("Intelligibility") +
   theme(
-    aspect.ratio = 1,
+    aspect.ratio = 1.333333,
     plot.title = element_text(hjust = 0.5),
     #axis.text.x = element_blank(),
     #axis.ticks.x = element_blank(),
     axis.title.x = element_blank(),
+    panel.border = element_rect(fill = NA, color = "black")
     ) +
   
   # Color Palate
@@ -2203,80 +2192,64 @@ plot_Int
 
 ## 2. Articulatory Precision
 ```{r}
-plot_AP_data <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
-  dplyr::select(!V1) %>%
-  dplyr::filter(ratingType == "AP") %>%
-  dplyr::rename(AP = Rating) %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M",
-                                        "F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")
-                             ),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   ))) %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(AP, na.rm = T),
-                   SE = plotrix::std.error(AP, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/AP_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
 
-plotData <- plot_AP_data
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
 
-lim_y <- c(0,
-          (base::max(plotData$upper) + base::max(plotData$upper)*.45))
-lim_group <- base::max(plotData$upper) + base::max(plotData$upper)*.10
-lim_group
-lim_condition_HC <- base::max(plotData$upper) + base::max(plotData$upper)*.25
-lim_condition_HC
-
-lim_condition_PD <- base::max(plotData$upper) + base::max(plotData$upper)*.40
-lim_condition_PD
+lim_y_AP <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_AP <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_AP <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_AP <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
   
   # Making the Plot
 plot_AP <- plotData %>%
   ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition) +
   
   # Line
   geom_line(
-    aes(color = Group,
-        group = Group),
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
     alpha = .6,
     ) +
   
   # Error Bars
   geom_errorbar(aes(
-    ymin = lower,
-    ymax = upper,
-    color = Group,
-    group = Group
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
     ),
-    width = .1,
+    position = position_dodge(width = .45),
+    width = 0,
     ) +
   
   # Point
   geom_point(
-    aes(color = Group,
-        group = Group),
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
     ) +
 
   # Adding significance bars - HC*Condition ----
   ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
                                           "Conv",
                                          "More\nClear")),
-                        aes(y_position = c(rep(lim_condition_HC, 6)),
+                        aes(y_position = c(rep(lim_condition_HC_AP, 6)),
                             xmin = c(1.1, 2.1, NA, 1.1, NA, NA),
                             xmax = c(1.9, 2.9, NA, 1.9, NA, NA),
                             annotations = c("*", "*", NA, "*", NA, NA),
@@ -2290,7 +2263,7 @@ plot_AP <- plotData %>%
   ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
                                           "Conv",
                                          "More\nClear")),
-                        aes(y_position = c(rep(lim_condition_PD, 6)),
+                        aes(y_position = c(rep(lim_condition_PD_AP, 6)),
                             xmin = c(1.1, 2.1, NA, 1.1, 2.1, NA),
                             xmax = c(1.9, 2.9, NA, 1.9, 2.9, NA),
                             annotations = c("*", "*", NA, "*", "*", NA),
@@ -2304,7 +2277,7 @@ plot_AP <- plotData %>%
   ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
                                           "Conv",
                                          "More\nClear")),
-                        aes(y_position = c(rep(lim_group, 6)),
+                        aes(y_position = c(rep(lim_group_AP, 6)),
                             xmin = c(.9, 1.9, 2.9, NA, NA, NA),
                             xmax = c(1.1, 2.1, 3.1, NA, NA, NA),
                             annotations = c("*", "*", "*", NA, NA, NA),
@@ -2315,22 +2288,25 @@ plot_AP <- plotData %>%
                         manual = T) +
   
   # Facet by Sex
-  facet_grid(~Sex) +
+  facet_grid(~facet) +
   
   # Changing the y axis scale
-  coord_cartesian(ylim = lim_y) +
-  scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
+  coord_cartesian(ylim = lim_y_AP) +
+  scale_y_continuous(breaks=c(0, 25, 50, 75, 100),
+                     minor_breaks = seq(0,100, (25/2))) +
   
   # Changing the theme, labels, and title
   theme_minimal() +
-  labs(y = "VAS Rating") +
+  labs(y = "VAS Rating",
+       color = "Group") +
   ggtitle("Articulatory Precision") +
   theme(
-    aspect.ratio = 1,
+    aspect.ratio = 1.333333,
     plot.title = element_text(hjust = 0.5),
     #axis.text.x = element_blank(),
     #axis.ticks.x = element_blank(),
     axis.title.x = element_blank(),
+    panel.border = element_rect(fill = NA, color = "black"),
     ) +
   
   # Color Palate
@@ -2342,78 +2318,108 @@ plot_AP
 
 ## 3. Acoustic VSA
 ```{r}
-plot_aVSA_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M",
-                                        "F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")
-                             ),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   )),
-                aVSA = aVSA/1000) %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(aVSA, na.rm = T),
-                   SE = plotrix::std.error(aVSA, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/aVSA_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
+
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
+
+lim_y_aVSA <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_aVSA <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_aVSA <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_aVSA <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
+
   
   # Making the Plot
-plot_aVSA <- plot_aVSA_data %>%
+plot_aVSA <- plotData %>%
     ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition) +
   
   # Line
   geom_line(
-    aes(color = Group,
-        group = Group),
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
     alpha = .6,
     ) +
   
   # Error Bars
   geom_errorbar(aes(
-    ymin = lower,
-    ymax = upper,
-    color = Group,
-    group = Group
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
     ),
-    width = .1,
+    position = position_dodge(width = .45),
+    width = 0,
     ) +
   
   # Point
   geom_point(
-    aes(color = Group,
-        group = Group),
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
     ) +
+  
+  # Adding significance bars - HC*Condition ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(rep(lim_condition_HC_aVSA, 6)),
+                            xmin = c(1.1, 2.1, NA, 1.1, 2.1, NA),
+                            xmax = c(1.9, 2.9, NA, 1.9, 2.9, NA),
+                            annotations = c(NA, NA, NA, NA, "*", NA),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = color_HC,
+                        tip_length = 0,
+                        manual = T) +
+  
+  # Adding significance bars - Group ----
+  ggsignif::geom_signif(data = data.frame(Group = c("Less\nClear",
+                                          "Conv",
+                                         "More\nClear")),
+                        aes(y_position = c(rep(lim_group_aVSA, 6)),
+                            xmin = c(.9, 1.9, 2.9, .9, 1.9, 2.9),
+                            xmax = c(1.1, 2.1, 3.1, 1.1, 2.1, 3.1),
+                            annotations = c(NA, NA, NA, "*", NA, "*"),
+                            group=c(1,2,3,4,5,6)),
+                        vjust = .5,
+                        color = "black",
+                        tip_length = 0,
+                        manual = T) +
+  
 
   # Facet by Sex
-  facet_grid(~Sex) +
+  facet_grid(~facet) +
   
   # Changing the y axis scale
-  #coord_cartesian() +
+  coord_cartesian(ylim = lim_y_aVSA-65) +
   #scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
   
   # Changing the theme, labels, and title
   theme_minimal() +
-  labs(y = "Hz^2") +
+  labs(y = bquote('Hz'^2),
+       color = "Group") +
   ggtitle("Acoustic VSA") +
   theme(
-    aspect.ratio = 1,
+    aspect.ratio = 1.333333,
     plot.title = element_text(hjust = 0.5),
     #axis.text.x = element_blank(),
     #axis.ticks.x = element_blank(),
     axis.title.x = element_blank(),
+    panel.border = element_rect(fill = NA, color = "black"),
     legend.position = "none"
     ) +
   
@@ -2427,62 +2433,67 @@ plot_aVSA
 
 ## 4. Acoustic Distance
 ```{r}
-plot_acoDistance_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M",
-                                        "F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")
-                             ),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   ))) %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(acoDistance, na.rm = T),
-                   SE = plotrix::std.error(acoDistance, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/acoDistance_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
 
-plotData <- plot_acoDistance_data
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
 
-lim_y4 <- c(0,
-          (base::max(plotData$upper) + base::max(plotData$upper)*.45))
-lim_group4 <- base::max(plotData$upper) + base::max(plotData$upper)*.10
-lim_group4
-lim_condition_HC4 <- base::max(plotData$upper) + base::max(plotData$upper)*.25
-lim_condition_HC4
-
-lim_condition_PD4 <- base::max(plotData$upper) + base::max(plotData$upper)*.40
-lim_condition_PD4
+lim_y_aDist <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_aDist <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_aDist <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_aDist <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
   
   # Making the Plot
 plot_acoDistance <- plotData %>%
   ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition,
-      group = Group,
-      color = Group) +
-    geom_line() +
-    geom_errorbar(aes(ymin = M - SE,
-                    ymax = M + SE),
-                width = .1) +
-    geom_point() +
+      group = group,
+      color = group) +
+  
+  # Line
+  geom_line(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
+    alpha = .6,
+    ) +
+  
+  # Error Bars
+  geom_errorbar(aes(
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
+    ),
+    position = position_dodge(width = .45),
+    width = 0,
+    ) +
+  
+  # Point
+  geom_point(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
+    ) +
   
   # Adding significance bars - HC*Condition -----
   ggsignif::geom_signif(data = data.frame(Group = c(
     "Less\nClear",
     "Conv",
     "More\nClear")),
-    aes(y_position = c(rep(lim_condition_HC4, 6)),
+    aes(y_position = c(rep(lim_condition_HC_aDist, 6)),
         xmin = c(
           # Male Speakers
           1, # Less Clear -> Conv
@@ -2522,7 +2533,7 @@ plot_acoDistance <- plotData %>%
     "Less\nClear",
     "Conv",
     "More\nClear")),
-    aes(y_position = c(rep(lim_condition_PD4, 6)),
+    aes(y_position = c(rep(lim_condition_PD_aDist, 6)),
         xmin = c(
           # Male Speakers
           1,   # Less Clear -> Conv
@@ -2557,21 +2568,23 @@ plot_acoDistance <- plotData %>%
     manual = T) +
   
   # Facet by Sex ----
-  facet_grid(~Sex) +
+  facet_grid(~facet) +
   
   # Changing the y axis scale
-  coord_cartesian(ylim = lim_y4) +
+  coord_cartesian(ylim = lim_y_aDist) +
   
   # Changing the theme, labels, and title
   theme_minimal() +
-  labs(y = "Hz") +
+  labs(y = "Hz",
+       color = "Group") +
   ggtitle("Acoustic Distance") +
   theme(
-    aspect.ratio = 1,
+    aspect.ratio = 1.333333,
     plot.title = element_text(hjust = 0.5),
     #axis.text.x = element_blank(),
     #axis.ticks.x = element_blank(),
     axis.title.x = element_blank(),
+    panel.border = element_rect(fill = NA, color = "black"),
     ) +
   
   # Color Palate
@@ -2583,62 +2596,91 @@ plot_acoDistance
 
 ## 5. F2 Slope
 ```{r}
-plot_F2_Slope_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M",
-                                        "F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")
-                             ),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   ))) %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(F2_Slope, na.rm = T),
-                   SE = plotrix::std.error(F2_Slope, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/F2_Slope_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
 
-plotData <- plot_F2_Slope_data
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
 
-lim_y5 <- c(0,
-          (base::max(plotData$upper) + base::max(plotData$upper)*.45))
-lim_group5 <- base::max(plotData$upper) + base::max(plotData$upper)*.10
-lim_group5
-lim_condition_HC5 <- base::max(plotData$upper) + base::max(plotData$upper)*.25
-lim_condition_HC5
-
-lim_condition_PD5 <- base::max(plotData$upper) + base::max(plotData$upper)*.40
-lim_condition_PD5
+lim_y_F2 <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_F2 <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_F2 <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_F2 <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
   
   # Making the Plot
 plot_F2_Slope <- plotData %>%
   ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition,
-      group = Group,
-      color = Group) +
-    geom_line() +
-    geom_errorbar(aes(ymin = M - SE,
-                    ymax = M + SE),
-                width = .1) +
-    geom_point() +
+      group = group,
+      color = group) +
   
-  # Adding significance bars - HC*Condition -----
+  # Line
+  geom_line(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
+    alpha = .6,
+    ) +
+  
+  # Error Bars
+  geom_errorbar(aes(
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
+    ),
+    position = position_dodge(width = .45),
+    width = 0,
+    ) +
+  
+  # Point
+  geom_point(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
+    ) +
+  
+  # Facet by Sex ----
+  facet_grid(~facet) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = lim_y_F2) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "Hz/ms",
+       color = "Group") +
+  ggtitle("F2 Slope") +
+  theme(
+    aspect.ratio = 1.333333,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    panel.border = element_rect(fill = NA, color = "black"),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  
+    # Adding significance bars - HC*Condition -----
   ggsignif::geom_signif(data = data.frame(Group = c(
     "Less\nClear",
     "Conv",
     "More\nClear")),
-    aes(y_position = c(rep(lim_condition_HC5, 6)),
+    aes(y_position = c(rep(lim_condition_HC_F2, 6)),
         xmin = c(
           # Male Speakers
           1,   # Less Clear -> Conv
@@ -2677,7 +2719,7 @@ plot_F2_Slope <- plotData %>%
     "Less\nClear",
     "Conv",
     "More\nClear")),
-    aes(y_position = c(rep(lim_condition_PD5, 6)),
+    aes(y_position = c(rep(lim_condition_PD_F2, 6)),
         xmin = c(
           # Male Speakers
           1,   # Less Clear -> Conv
@@ -2709,100 +2751,86 @@ plot_F2_Slope <- plotData %>%
     vjust = .5,
     color = color_PD,
     tip_length = 0,
-    manual = T) +
-  
-  # Facet by Sex ----
-  facet_grid(~Sex) +
-  
-  # Changing the y axis scale
-  coord_cartesian(ylim = lim_y5) +
-  
-  # Changing the theme, labels, and title
-  theme_minimal() +
-  labs(y = "Hz/ms") +
-  ggtitle("F2 Slope") +
-  theme(
-    aspect.ratio = 1,
-    plot.title = element_text(hjust = 0.5),
-    #axis.text.x = element_blank(),
-    #axis.ticks.x = element_blank(),
-    axis.title.x = element_blank(),
-    ) +
-  
-  # Color Palate
-  scale_color_manual(values = c(color_HC,color_PD)) +
-  scale_fill_manual(values = c(color_HC,color_PD))
+    manual = T)
 
 plot_F2_Slope
 
 ```
-## 6. kVSA
+## 6. Kinematic VSA
 ```{r}
-plot_kVSA_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M",
-                                        "F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")
-                             ),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   ))) %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(kVSA, na.rm = T),
-                   SE = plotrix::std.error(kVSA, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/kVSA_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
 
-plotData <- plot_kVSA_data
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
 
-lim_y <- c(0,
-          (base::max(plotData$upper) + base::max(plotData$upper)*.45))
-lim_group <- base::max(plotData$upper) + base::max(plotData$upper)*.10
-lim_group
-lim_condition_HC <- base::max(plotData$upper) + base::max(plotData$upper)*.25
-lim_condition_HC
-
-lim_condition_PD <- base::max(plotData$upper) + base::max(plotData$upper)*.40
-lim_condition_PD
+lim_y_kVSA <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_kVSA <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_kVSA <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_kVSA <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
   
-  # Making the Plot
+# Making the Plot
 plot_kVSA <- plotData %>%
   ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition,
-      group = Group,
-      color = Group) +
-    geom_line() +
-    geom_errorbar(aes(ymin = M - SE,
-                    ymax = M + SE),
-                width = .1) +
-    geom_point() +
+      group = group,
+      color = group) +
   
-   # Facet by Sex ----
-  facet_grid(~Sex) +
-
+  # Line
+  geom_line(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
+    alpha = .6,
+    ) +
+  
+  # Error Bars
+  geom_errorbar(aes(
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
+    ),
+    position = position_dodge(width = .45),
+    width = 0,
+    ) +
+  
+  # Point
+  geom_point(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
+    ) +
+  
+  # Facet by Sex ----
+  facet_grid(~facet) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = lim_y_kVSA) +
   
   # Changing the theme, labels, and title
   theme_minimal() +
-  labs(y = bquote('mm'^2)) +
+  labs(y = bquote('mm'^2),
+       color = "Group") +
   ggtitle("Kinematic VSA") +
   theme(
-    aspect.ratio = 1,
+    aspect.ratio = 1.333333,
     plot.title = element_text(hjust = 0.5),
     #axis.text.x = element_blank(),
     #axis.ticks.x = element_blank(),
     axis.title.x = element_blank(),
-    legend.position = "none"
+    panel.border = element_rect(fill = NA, color = "black"),
     ) +
   
   # Color Palate
@@ -2814,62 +2842,91 @@ plot_kVSA
 
 ## 7. Kin Distance
 ```{r}
-plot_kinDistance_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M",
-                                        "F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")
-                             ),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   )))  %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(kinDistance, na.rm = T),
-                   SE = plotrix::std.error(kinDistance, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/kinDistance_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
 
-plotData <- plot_kinDistance_data
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
 
-lim_y7 <- c(0,
-          (base::max(plotData$upper) + base::max(plotData$upper)*.48))
-lim_group7 <- base::max(plotData$upper) + base::max(plotData$upper)*.10
-lim_group7
-lim_condition_HC7 <- base::max(plotData$upper) + base::max(plotData$upper)*.25
-lim_condition_HC7
-
-lim_condition_PD7 <- base::max(plotData$upper) + base::max(plotData$upper)*.40
-lim_condition_PD7
+lim_y_kinDist <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_kinDist <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_kinDist <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_kinDist <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
   
-  # Making the Plot
+# Making the Plot
 plot_kinDistance <- plotData %>%
   ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition,
-      group = Group,
-      color = Group) +
-    geom_line() +
-    geom_errorbar(aes(ymin = M - SE,
-                    ymax = M + SE),
-                width = .1) +
-    geom_point() +
+      group = group,
+      color = group) +
   
-    # Adding significance bars - HC*Condition -----
+  # Line
+  geom_line(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
+    alpha = .6,
+    ) +
+  
+  # Error Bars
+  geom_errorbar(aes(
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
+    ),
+    position = position_dodge(width = .45),
+    width = 0,
+    ) +
+  
+  # Point
+  geom_point(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
+    ) +
+  
+  # Facet by Sex ----
+  facet_grid(~facet) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = lim_y_kinDist) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "mm",
+       color = "Group") +
+  ggtitle("Kinematic Distance") +
+  theme(
+    aspect.ratio = 1.333333,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    panel.border = element_rect(fill = NA, color = "black"),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  
+  # Adding significance bars - HC*Condition -----
   ggsignif::geom_signif(data = data.frame(Group = c(
     "Less\nClear",
     "Conv",
     "More\nClear")),
-    aes(y_position = c(rep(lim_condition_HC7, 6)),
+    aes(y_position = c(rep(lim_condition_HC_kinDist, 6)),
         xmin = c(
           # Male Speakers
           1,   # Less Clear -> Conv
@@ -2908,7 +2965,7 @@ plot_kinDistance <- plotData %>%
     "Less\nClear",
     "Conv",
     "More\nClear")),
-    aes(y_position = c(rep(lim_condition_PD7, 6)),
+    aes(y_position = c(rep(lim_condition_PD_kinDist, 6)),
         xmin = c(
           # Male Speakers
           1,   # Less Clear -> Conv
@@ -2940,92 +2997,98 @@ plot_kinDistance <- plotData %>%
     vjust = .5,
     color = color_PD,
     tip_length = 0,
-    manual = T) +
-  
-  
-  # Facet by Sex ----
-  facet_grid(~Sex) +
-  
-  # Changing the y axis scale
-  coord_cartesian(ylim = lim_y7) +
-  
-  # Changing the theme, labels, and title
-  theme_minimal() +
-  labs(y = "mm") +
-  ggtitle("Kinematic Distance") +
-  theme(
-    aspect.ratio = 1,
-    plot.title = element_text(hjust = 0.5),
-    #axis.text.x = element_blank(),
-    #axis.ticks.x = element_blank(),
-    axis.title.x = element_blank(),
-    ) +
-  
-  # Color Palate
-  scale_color_manual(values = c(color_HC,color_PD)) +
-  scale_fill_manual(values = c(color_HC,color_PD))
+    manual = T)
 
 plot_kinDistance
 ```
 
 ## 8. TB Speed
 ```{r}
-plot_TB_Speed_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex,
-                             levels = c("M",
-                                        "F"),
-                             labels = c("Male Speakers",
-                                        "Female Speakers")
-                             ),
-                condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less\nClear",
-                                     "Conv",
-                                     "More\nClear"
-                                   ))) %>%
-  dplyr::group_by(Sex, Group, condition) %>%
-  dplyr::summarise(M = mean(TB_speedMax, na.rm = T),
-                   SE = plotrix::std.error(TB_speedMax, na.rm = T)) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(upper = M + SE,
-                lower = M - SE)
+model <- base::readRDS("Data/Models/Study 1/TB_speedMax_finalModel.rds") %>%
+  sjPlot::plot_model(type = "int")
 
-plotData <- plot_TB_Speed_data
+plotData <- model[[4]][["data"]] %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    condition = factor(x,
+                       levels = c(3, 1, 2),
+                       labels = c("Less\nClear",
+                                  "Conv",
+                                  "More\nClear")),
+    facet = factor(facet,
+                   levels = c("M", "F"),
+                   labels = c("Male Speakers", "Female Speakers"))) 
 
-lim_y8 <- c(0,
-          (base::max(plotData$upper) + base::max(plotData$upper)*.45))
-lim_group8 <- base::max(plotData$upper) + base::max(plotData$upper)*.10
-lim_group8
-lim_condition_HC8 <- base::max(plotData$upper) + base::max(plotData$upper)*.25
-lim_condition_HC8
-
-lim_condition_PD8 <- base::max(plotData$upper) + base::max(plotData$upper)*.40
-lim_condition_PD8
+lim_y_TB <- c(0,
+          (base::max(plotData$conf.high) + base::max(plotData$conf.high)*.45))
+lim_group_TB <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.10
+lim_condition_HC_TB <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.25
+lim_condition_PD_TB <- base::max(plotData$conf.high) + base::max(plotData$conf.high)*.40
   
-  # Making the Plot
+# Making the Plot
 plot_TB_Speed <- plotData %>%
   ggplot() +
-  aes(y = M,
+  aes(y = predicted,
       x = condition,
-      group = Group,
-      color = Group) +
-    geom_line() +
-    geom_errorbar(aes(ymin = M - SE,
-                    ymax = M + SE),
-                width = .1) +
-    geom_point() +
+      group = group,
+      color = group) +
+  
+  # Line
+  geom_line(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45),
+    alpha = .6,
+    ) +
+  
+  # Error Bars
+  geom_errorbar(aes(
+    ymin = conf.low,
+    ymax = conf.high,
+    color = group,
+    group = group
+    ),
+    position = position_dodge(width = .45),
+    width = 0,
+    ) +
+  
+  # Point
+  geom_point(
+    aes(color = group,
+        group = group),
+    position = position_dodge(width = .45)
+    ) +
+  
+  # Facet by Sex ----
+  facet_grid(~facet) +
+  
+  # Changing the y axis scale
+  coord_cartesian(ylim = lim_y_TB) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(y = "mm/s",
+       color = "Group") +
+  ggtitle("TB Speed") +
+  theme(
+    aspect.ratio = 1.333333,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    panel.border = element_rect(fill = NA, color = "black"),
+    ) +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
   
   # Adding significance bars - HC*Condition -----
   ggsignif::geom_signif(data = data.frame(Group = c(
     "Less\nClear",
     "Conv",
     "More\nClear")),
-    aes(y_position = c(rep(lim_condition_HC8, 6)),
+    aes(y_position = c(rep(lim_condition_HC_TB, 6)),
         xmin = c(
           # Male Speakers
           1,   # Less Clear -> Conv
@@ -3057,29 +3120,7 @@ plot_TB_Speed <- plotData %>%
     vjust = .5,
     color = color_HC,
     tip_length = 0,
-    manual = T) +
-  
-  # Facet by Sex ----
-  facet_grid(~Sex) +
-  
-  # Changing the y axis scale
-  coord_cartesian(ylim = lim_y8) +
-  
-  # Changing the theme, labels, and title
-  theme_minimal() +
-  labs(y = "mm/s") +
-  ggtitle("TB Speed") +
-  theme(
-    aspect.ratio = 1,
-    plot.title = element_text(hjust = 0.5),
-    #axis.text.x = element_blank(),
-    #axis.ticks.x = element_blank(),
-    axis.title.x = element_blank(),
-    ) +
-  
-  # Color Palate
-  scale_color_manual(values = c(color_HC,color_PD)) +
-  scale_fill_manual(values = c(color_HC,color_PD))
+    manual = T)
 
 plot_TB_Speed
 
@@ -3087,24 +3128,6 @@ plot_TB_Speed
 ## Combining all of the plots
 ```{r}
 library(patchwork)
-
-# All combined
-plot_s2 <- plot_Int + plot_AP + plot_spacer() + guide_area()  +
-  plot_aVSA + plot_acoDistance + plot_F2_Slope + plot_spacer() +
-  plot_kVSA + plot_kinDistance + plot_TB_Speed +
-  plot_layout(guides = "collect",
-              nrow = 3,
-              ncol = 4)
-plot_s2
-
-dir.create(path = "Data/Plots/Results",
-           showWarnings = F)
-ggsave(filename = "S2 Results.png",
-       plot = plot_s2,
-       path = "Data/Plots/Results",
-       height = 6,
-       width = 8,
-       scale = 1.2)
 
 # Perceptual Plots
 plot_s2_perceptual <- ggarrange(plot_Int,plot_AP,
@@ -3117,48 +3140,53 @@ dir.create(path = "Data/Plots/Results",
 ggsave(filename = "Results_perceptual.png",
        plot = plot_s2_perceptual,
        path = "Data/Plots/Results",
-       height = 2.5,
-       width = 7,
-       scale = 1.1,
+       height = 3.3,
+       width = 6.5,
+       scale = 1,
        bg = "white")
 
 # Acoustic Plots
-plot_s2_acoustic <- plot_aVSA + plot_acoDistance +
-  plot_F2_Slope + patchwork::guide_area() +
-    patchwork::plot_layout(guides = "collect",
-              design = "
-              AABB
-              CCDD")
+plot_s2_acoustic <- plot_aVSA + patchwork::plot_spacer() + plot_acoDistance +
+  plot_F2_Slope + patchwork::plot_spacer() + patchwork::guide_area() +
+    patchwork::plot_layout(
+      widths = c(1, -.075, 1),
+      guides = "collect",
+      #design = "
+      #        AABB
+      #        CCDD"
+      )
 plot_s2_acoustic
 
 dir.create(path = "Data/Plots/Results",
            showWarnings = F)
-ggsave(filename = "S2 Results_acoustic.png",
+ggsave(filename = "Results_acoustic.png",
        plot = plot_s2_acoustic,
        path = "Data/Plots/Results",
-       height = 4,
-       width = 6,
-       scale = 1.1)
+       height = 5,
+       width = 6.5,
+       scale = 1)
 
 # Kinematic Plots
-plot_s2_kinematic <- plot_kVSA + plot_kinDistance +
-  plot_TB_Speed + patchwork::guide_area() +
-    patchwork::plot_layout(guides = "collect",
-              design = "
-              AABB
-              CCDD")
+plot_s2_kinematic <- plot_kVSA + patchwork::plot_spacer() + plot_kinDistance +
+  plot_TB_Speed + patchwork::plot_spacer() + patchwork::guide_area() +
+    patchwork::plot_layout(
+      widths = c(1, -.02, 1),
+      guides = "collect",
+      #design = "
+      #        AABB
+      #        CCDD",
+      )
 plot_s2_kinematic
 
 dir.create(path = "Data/Plots/Results",
            showWarnings = F)
-ggsave(filename = "S2 Results_kinematic.png",
+ggsave(filename = "Results_kinematic.png",
        plot = plot_s2_kinematic,
        path = "Data/Plots/Results",
-       height = 4,
-       width = 6,
-       scale = 1.1)
+       height = 5,
+       width = 6.5,
+       scale = 1)
 
-stop()
 ```
 
 ```{r}
