@@ -17,8 +17,7 @@ library(plotrix) # install.packages('plotrix')
 source('Functions/MSL Tools.R')
 ```
 
-# General
-## Participants Table
+# Load Data
 ```{r}
 fileInventories <- rio::import(file = "Data/RawData/File Inventories.xlsx") %>%
   dplyr::rename(DatabaseID = `Sub #`,
@@ -64,251 +63,6 @@ speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
   dplyr::select(!MoCA)
 ```
 
-### Summaries
-```{r}
-speakerList %>%
-    dplyr::group_by(Group) %>%
-    dplyr::summarise(Mean = mean(Age, na.rm = T),
-                     sd = sd(Age, na.rm = T),
-                     n = NROW(Age))
-
-speakerList %>%
-    dplyr::group_by(Group, Sex) %>%
-    dplyr::summarise(Mean = mean(Age, na.rm = T),
-                     sd = sd(Age, na.rm = T),
-                     n = NROW(Age))
-```
-
-
-### All Speakers
-```{r}
-# All Speakers ----
-speakerList %>%
-  dplyr::select(!DatabaseID) %>%
-  dplyr::arrange(StudyID) %>%
-  
-  # Creating the gt table
-  gt::gt(rowname_col = "StudyID",
-    groupname_col = "Group") %>%
-  
-  # Title
-  gt::tab_header(
-      title = "Speaker Demographics"
-      ) %>%
-  
-  # Replace missing values with blanks
-  gt::sub_missing(
-  columns = everything(),
-  rows = everything(),
-  missing_text = ""
-  ) %>%
-  
-  # Renaming columns
-  gt::cols_label(
-    dxTime = "Time Since Diagnosis",
-    Rating_M = "Intelligibility (%)",
-  ) %>%
-  
-  # Formatting the Intelligibility data
-  gt::fmt_number(
-  columns = Rating_M,
-  decimals = 2,
-  ) %>%
-  
-  # Format groups
-  gt::tab_options(row_group.as_column = TRUE) %>%
-  
-  # Saving the table
-  gt::gtsave(filename = "SpeakerDemo.html",
-             path = "Data/Tables")
-```
-
-### HC Speakers
-```{r}
-# HC Speakers ----
-speakerList %>%
-  dplyr::filter(Group == "HC") %>%
-  dplyr::select(!DatabaseID) %>%
-  dplyr::arrange(StudyID) %>%
-  
-  # Creating the gt table
-  gt::gt(rowname_col = "StudyID",
-    groupname_col = "Sex") %>%
-  
-  # Title
-  gt::tab_header(
-      title = "Speaker Demographics"
-      ) %>%
-  
-  # Replace missing values with blanks
-  gt::sub_missing(
-  columns = everything(),
-  rows = everything(),
-  missing_text = ""
-  ) %>%
-  
-  # Renaming columns
-  gt::cols_label(
-    dxTime = "Time Since Diagnosis",
-    Rating_M = "Intelligibility (%)",
-  ) %>%
-  
-  # Formatting the Intelligibility data
-  gt::fmt_number(
-  columns = Rating_M,
-  decimals = 2,
-  ) %>%
-  
-  # Adding summary rows
-  ## Male Speakers
-  gt::summary_rows(
-    groups = "Male Speakers",
-    columns = c(Age, Rating_M),
-    fns = list(
-      M = ~ mean(., na.rm = TRUE),
-      SD = ~ sd(., na.rm = TRUE)
-    ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
-  ) %>%
-  
-  ## Female Speakers
-  gt::summary_rows(
-    groups = "Female Speakers",
-    columns = c(Age, Rating_M),
-    fns = list(
-      M = ~ mean(., na.rm = TRUE),
-      SD = ~ sd(., na.rm = TRUE)
-    ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
-  ) %>%
-  
-  
-  # Adding footnote to Intelligibility
-  gt::tab_footnote(
-    footnote = "The reported intelligibility (%) scores are aggregated from the Visual Analog Scale (VAS) ratings made for conversational speech samples in the current study.",
-    locations = gt::cells_column_labels(
-      columns = Rating_M
-    )
-  ) %>%
-  
-  # Adding footnote to HCM02
-  gt::tab_footnote(
-    footnote = "The HCM02 speaker, while healthy and intelligible, had a Spanish accent that likely influenced his intelligibility ratings. Further discussion about this speaker and the implications for his intelligibility ratings can be found in the limitations section.",
-    locations = gt::cells_body(
-      columns = Rating_M,
-      rows = StudyID =="HCM02"
-    )
-  ) %>%
-  
-  # Adding footnote to HCM04
-  gt::tab_footnote(
-    footnote = "The HCM04 speaker, presented with a perceptually rough voice quality consistent with healthy aging. This voice quality likely influenced his intelligibility ratings.",
-    locations = gt::cells_body(
-      columns = Rating_M,
-      rows = StudyID =="HCM04"
-    )
-  ) %>%
-  
-  # Format groups
-  gt::tab_options(row_group.as_column = TRUE) %>%
-  
-  # Hiding time since diagnosis and severity
-  gt::cols_hide(columns = c(dxTime,Severity)) %>%
-  
-  # Saving the table
-  gt::gtsave(filename = "SpeakerDemo_HC.html",
-             path = "Data/Tables")
-```
-
-### PD Speakers
-```{r}
-# PD Speakers ----
-speakerList %>%
-  dplyr::filter(Group == "PD") %>%
-  dplyr::select(!DatabaseID) %>%
-  dplyr::arrange(StudyID) %>%
-  
-  # Creating the gt table
-  gt::gt(rowname_col = "StudyID",
-    groupname_col = "Sex") %>%
-  
-  # Title
-  gt::tab_header(
-      title = "Speaker Demographics"
-      ) %>%
-  
-  # Replace missing values with blanks
-  gt::sub_missing(
-  columns = everything(),
-  rows = everything(),
-  missing_text = ""
-  ) %>%
-  
-  # Renaming columns
-  gt::cols_label(
-    dxTime = "Time Since Diagnosis (Years)",
-    Rating_M = "Intelligibility (%)",
-  ) %>%
-  
-  # Formatting the Intelligibility data
-  gt::fmt_number(
-  columns = Rating_M,
-  decimals = 2,
-  ) %>%
-  
-  # Formatting the dxTime data
-  gt::fmt_number(
-  columns = dxTime,
-  decimals = 0,
-  ) %>%
-  
-  # Adding summary rows
-  ## Male Speakers
-  gt::summary_rows(
-    groups = "Male Speakers",
-    columns = c(Age, dxTime, Rating_M),
-    fns = list(
-      M = ~ mean(., na.rm = TRUE),
-      SD = ~ sd(., na.rm = TRUE)
-    ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
-  ) %>%
-  
-  ## Female Speakers
-  gt::summary_rows(
-    groups = "Female Speakers",
-    columns = c(Age, dxTime, Rating_M),
-    fns = list(
-      M = ~ mean(., na.rm = TRUE),
-      SD = ~ sd(., na.rm = TRUE)
-    ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
-  ) %>%
-  
-  # Adding footnote to Intelligibility
-  gt::tab_footnote(
-    footnote = "The reported intelligibility (%) scores are aggregated from the Visual Analog Scale (VAS) ratings made for conversational speech samples in the current study.",
-    locations = gt::cells_column_labels(
-      columns = Rating_M
-    )
-  ) %>%
-  
-  # Adding footnote to Severity
-  gt::tab_footnote(
-    footnote = "Severity labels were determined based on the intelligibility measures using the surrogate-severity measures outlined in Stipancic et al. (2022). Specifically, intelligibility values > 94% are `Normal`, 85% - 94% are `Mild`, 70% - 84% are `Moderate`, 45% - 69% are `Severe`, and < 45% are `Profound`.",
-    locations = gt::cells_column_labels(
-      columns = Severity
-    )
-  ) %>%
-  
-  # Format groups
-  gt::tab_options(row_group.as_column = TRUE) %>%
-  
-  # Saving the table
-  gt::gtsave(filename = "SpeakerDemo_PD.html",
-             path = "Data/Tables")
-
-```
 
 ## Listener Descriptions
 ```{r}
@@ -356,332 +110,6 @@ listenerDemo %>%
   dplyr::mutate(duration = `Duration (in seconds)`/60) %>%
   dplyr::group_by(ethnicity) %>%
   dplyr::summarise(N = NROW(ethnicity))
-```
-
-## Descriptives Table
-```{r}
-# Perceptual Measures ----
-perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
-  dplyr::select(!1) %>%
-  
-  # Selecting only the data we need
-  dplyr::select(DatabaseID, Group, Sex, condition, ratingType, Rating)
-  
-  ## By Sex
-  perceptualMeasures_bySex <- perceptualMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, condition, ratingType) %>%
-    dplyr::summarise(
-      M = mean(Rating, na.rm = T),
-      SD = sd(Rating, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      )
-  
-  ## All Speakers
-  perceptualMeasures_allSpeakers <- perceptualMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, condition, ratingType) %>%
-    dplyr::summarise(
-      M = mean(Rating, na.rm = T),
-      SD = sd(Rating, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      ) %>%
-    
-    # Add "All Speakers" label to the Sex
-    dplyr::mutate(Sex = "All Speakers")
-  
-  
-  perceptualMeasures <- base::rbind(
-    perceptualMeasures_allSpeakers,
-    perceptualMeasures_bySex,
-    deparse.level = 1) %>%
-    dplyr::relocate(Sex, .before = ratingType) %>%
-    dplyr::rename(Measure = ratingType)
-  
-  # Removing the unneeded items
-  rm(
-    perceptualMeasures_allSpeakers,
-    perceptualMeasures_bySex)
-  
-  
-
-# VSA Measures ----
-vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-    
-    # Converting aVSA from Hz to kHz, to make table cleaner
-    dplyr::mutate(aVSA = aVSA / 1000) %>%
-  
-    # Selecting only the data we need
-    dplyr::select(DatabaseID:kVSA) %>%
-    
-    # Formatting for the table
-    tidyr::pivot_longer(cols = aVSA:kVSA,
-                        names_to = "Measure",
-                        values_to = "Value")
-
-  ## By Sex
-  vsaMeasures_bySex <- vsaMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group,condition),
-      values_from = c(M,SD),
-      )
-  
-  ## All Speakers
-  vsaMeasures_allSpeakers <- vsaMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      ) %>%
-    
-    # Add "All Speakers" label to the Sex
-    dplyr::mutate(Sex = "All Speakers")
-
-vsaMeasures <- base::rbind(
-  vsaMeasures_allSpeakers,
-  vsaMeasures_bySex,
-  deparse.level = 1
-  ) %>%
-  dplyr::relocate(Sex, .before = Measure)
-
-  # Removing the unneeded items
-  rm(
-    vsaMeasures_allSpeakers,
-    vsaMeasures_bySex)
-
-# /ai/ Measures ----
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  
-  # Selecting only the data we need
-  dplyr::select(
-    DatabaseID:Group,
-    condition,
-    acoDistance,
-    kinDistance,
-    F2_Slope,
-    TB_speedMax,
-    ) %>%
-  
-  # Formatting for the table
-  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
-                      names_to = "Measure",
-                      values_to = "Value")
-  
-  ## By sex
-  aiMeasures_bySex <- aiMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-    ) %>%
-  
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group,condition),
-      values_from = c(M,SD),
-      )
-  
-  ## All Speakers
-  aiMeasures_allSpeakers <- aiMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-    ) %>%
-  
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      ) %>%
-  
-    # Add "All Speakers" label to the Sex
-    dplyr::mutate(Sex = "All Speakers")
-  
-  aiMeasures <- base::rbind(
-    aiMeasures_allSpeakers,
-    aiMeasures_bySex,
-    deparse.level = 1
-    ) %>%
-    dplyr::relocate(Sex, .before = Measure)
-  
-  
-  # Removing the unneeded items
-  rm(
-    aiMeasures_allSpeakers,
-    aiMeasures_bySex)
-  
-  
-# All Measures ----
-descriptivesData <- base::rbind(
-  perceptualMeasures,
-  vsaMeasures,
-  aiMeasures,
-  deparse.level = 1
-) %>%
-    dplyr::mutate_at(vars(-c(Sex,Measure)), round, digits = 2) %>%
-    dplyr::mutate(Measure = factor(
-      Measure,
-      levels = c(
-        "Int",
-        "AP",
-        "aVSA",
-        "acoDistance",
-        "F2_Slope",
-        "kVSA",
-        "kinDistance",
-        "dTB_speedMax",
-        "TB_speedMax",
-        "Jaw_speedMax"
-       ),
-       labels = c(
-         "Intelligibility (VAS)",
-         "Articulatory Precision (VAS)",
-         "Acoustic VSA (kHz^2)",
-         "Acoustic Distance (Hz)",
-         "F2 Slope (Hz/ms)",
-         "Kinematic VSA (mm^2)",
-         "Kinematic Distance (mm)",
-         "dTB Peak Speed (mm/s)",
-         "TB Peak Speed (mm/s)",
-         "Jaw Peak Speed (mm/s)"
-         )),
-        Sex = factor(Sex,
-                             levels = c(
-                               "All Speakers",
-                               "M",
-                               "F"),
-                             labels = c(
-                               "All Speakers",
-                               "Male Speakers",
-                               "Female Speakers"))) %>%
-    dplyr::arrange(Measure) %>%
-    dplyr::select(
-      Sex, Measure,
-      M_HC_conv, SD_HC_conv, M_PD_conv, SD_PD_conv,
-      M_HC_lessClear, SD_HC_lessClear, M_PD_lessClear, SD_PD_lessClear,
-      M_HC_moreClear, SD_HC_moreClear, M_PD_moreClear, SD_PD_moreClear,
-    )
-  
-  # Creating the GT table
-  descriptivesTable <- descriptivesData %>%
-    gt::gt(
-      rowname_col = "Measure",
-      groupname_col = "Sex") %>%
-    gt::tab_header(
-      title = "Study 2: Descriptive Statistics",
-      subtitle = "The target measures for study 2, presented for Conv, Less Clear, and More Clear speaking conditions."
-      ) %>%
-  # Spanner 1: PD Speakers
-  gt::tab_spanner(
-    label = "PD",
-    level = 1,
-    gather = FALSE,
-    columns = c(M_PD_conv, SD_PD_conv,
-                M_PD_lessClear, SD_PD_lessClear,
-                M_PD_moreClear, SD_PD_moreClear)
-  ) %>%
-  # Spanner 1: HC Speakers
-  gt::tab_spanner(
-    label = "HC",
-    level = 1,
-    gather = FALSE,
-    columns = c(M_HC_conv, SD_HC_conv,
-                M_HC_lessClear, SD_HC_lessClear,
-                M_HC_moreClear, SD_HC_moreClear)
-  ) %>%
-  # Spanner 2: Conversational
-  gt::tab_spanner(
-    label = "Conversational",
-    level = 2,
-    gather = TRUE,
-    columns = c(M_HC_conv,
-                SD_HC_conv,
-                M_PD_conv,
-                SD_PD_conv)
-  ) %>%
-  # Spanner 2: Less Clear
-  gt::tab_spanner(
-    label = "Less Clear",
-    level = 2,
-    gather = TRUE,
-    columns = c(M_HC_lessClear,
-                SD_HC_lessClear,
-                M_PD_lessClear,
-                SD_PD_lessClear)
-  ) %>%
-  # Spanner 2: More Clear
-  gt::tab_spanner(
-    label = "More Clear",
-    level = 2,
-    gather = TRUE,
-    columns = c(M_HC_moreClear,
-                SD_HC_moreClear,
-                M_PD_moreClear,
-                SD_PD_moreClear)
-  ) %>%
-  gt::cols_label(
-    M_HC_conv = "M",
-    SD_HC_conv = "SD",
-    M_PD_conv = "M",
-    SD_PD_conv = "SD",
-    M_HC_lessClear = "M",
-    SD_HC_lessClear = "SD",
-    M_PD_lessClear = "M",
-    SD_PD_lessClear = "SD",
-    M_HC_moreClear = "M",
-    SD_HC_moreClear = "SD",
-    M_PD_moreClear = "M",
-    SD_PD_moreClear = "SD"
-  ) %>%
-    
-    # Align the measure labels to the right
-    gt::cols_align(
-      align = c("right"),
-      columns = Measure
-      ) %>%
-  gt::tab_options(row_group.as_column = FALSE)
-  
-  # Save as HTML
-  gt::gtsave(
-    data = descriptivesTable,
-    filename = "Data/Tables/descriptivesTable.html"
-    )
-  
-  # Save as .docx
-  gt::gtsave(
-    data = descriptivesTable,
-    filename = "Data/Tables/descriptivesTable.docx"
-    )
-
-    
 ```
 
 # APA reporting function
@@ -1073,41 +501,10 @@ Int_finalModel <- Int_m3
 
 summary(Int_finalModel)
 
-# Compute EMMs for Group and Sex
-emms_group <- emmeans(Int_finalModel, ~ Group | Sex*condition)
-emms_condition <- emmeans(Int_finalModel, ~ condition | Sex*Group)
-
-# Compare EMMs for Group and Sex
-table_group <- summary(pairs(emms_group)) %>%
-    dplyr::mutate(
-    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
-    apa = paste0(Sex, ", ",
-                 condition, ", ",
-                 contrast, ": z = ",
-                 round(z.ratio, digits = 2), ", ",
-                 ifelse(p.value < .001, "p < .001", paste0"p = ",round(p.value, digits = 3)))))
-table_groupCondition <- summary(pairs(emms_condition)) %>%
-  dplyr::mutate(
-    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
-    apa = paste0(Sex, ", ",
-                             Group, ", ",
-                             contrast, ": z = ",
-                             round(z.ratio, digits = 2), ", ",
-                             ifelse(p.value < .001, "p < .001", round(p.value, digits = 3))))
-
-apa_s2_emmPairs(pairs(emms_condition),
-                Sex_Input = "M",
-                Group_Input = "HC",
-                Contrast_Input = "conv - moreClear")
-apa_s2_emmPairs(pairs(emms_condition),
-                Sex_Input = "F",
-                Group_Input = "HC",
-                Contrast_Input = "conv - moreClear")
-
 # Saving the model
 base::saveRDS(
   object = Int_finalModel,
-  file = "Data/Models/Study 1/Int_finalModel.rds")
+  file = "Study-1/Models/Int_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^Int_m"))
@@ -1197,23 +594,10 @@ AP_finalModel <- AP_m3
 
 summary(AP_finalModel)
 
-# Compute EMMs for Group and Sex
-emms_group <- emmeans(AP_finalModel, ~ Group | Sex*condition)
-emms_condition <- emmeans(AP_finalModel, ~ condition | Sex*Group)
-
-# Compare EMMs for Group and Sex
-pairs(emms_group)
-pairs(emms_condition)
-
-# APA Reporting
-apa_s1_emmPairs(pairs(emms_group),
-                sex = "F",
-                Condition = "conv")
-
 # Saving the model
 base::saveRDS(
   object = AP_finalModel,
-  file = "Data/Models/Study 1/AP_finalModel.rds")
+  file = "Study-1/Models/AP_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^AP_m"))
@@ -1294,94 +678,12 @@ anova(aVSA_m2, aVSA_m3)
 #### Final Model
 ```{r}
 aVSA_finalModel <- aVSA_m3
-
-plotData <- modelData
-
-predictions  <- stats::predict(aVSA_finalModel, se = T)
-plotData$mpg   <- predictions$fit
-new_df$upper <- new_df$mpg + 1.96 * predictions$se.fit
-new_df$lower <- new_df$mpg - 1.96 * predictions$se.fit
-new_df$disp  <- factor(new_df$disp)
-
-aVSA_finalModel <- lmerTest::lmer(aVSA ~ condition*Group*Sex +
-                       (1 | StudyID),
-                     data = modelData %>%
-                       dplyr::mutate(condition = factor(condition,
-                                                        levels = c(
-                                                          "lessClear",
-                                                          "conv",
-                                                          "moreClear"),
-                                                        labels = c(
-                                                          "Less\nClear",
-                                                          "Conv",
-                                                          "More\nClear"
-                                                        )),
-                                     Sex = factor(Sex,
-                                                  levels = c("M", "F"),
-                                                  labels = c("Male Speakers",
-                                                             "Female Speakers"))))
-
-plots_aVSA <- sjPlot::plot_model(aVSA_finalModel,
-                   type = "int",
-                   show.values = TRUE)
-
-plot_aVSA <- plots_aVSA[[4]]$data %>%
-  as.data.frame() %>%
-  dplyr::mutate(
-    condition = factor(x,
-                       levels = c(3, 1, 2),
-                       labels = c("Less\nClear",
-                                  "Conv",
-                                  "More\nClear"))) %>%
-
-  ggplot() +
-  aes(
-    x = condition,
-    y = predicted,
-    color = group,
-  ) +
-  geom_line(aes(group = group),
-            position = position_dodge(width = .5),
-            alpha = .7) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                width = 0.0,
-                linewidth = .7,
-                position = position_dodge(width = .5)) +
-  geom_point(size = 3,
-             position = position_dodge(width = .5)) +
-  facet_wrap(~facet) +
-    theme_minimal() +
-  theme(panel.border = element_rect(fill = NA, color = "black"))
-plot_aVSA
-  
 summary(aVSA_finalModel)
-
-# Compute EMMs for Group and Sex
-emms_group <- emmeans(aVSA_finalModel, ~ Group | Sex*condition)
-emms_condition <- emmeans(aVSA_finalModel, ~ condition | Sex*Group)
-
-# Compare EMMs for Group and Sex
-table_group_aVSA <- summary(pairs(emms_group)) %>%
-    dplyr::mutate(
-    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
-    apa = paste0(Sex, ", ",
-                 condition, ", ",
-                 contrast, ": t = ",
-                 round(t.ratio, digits = 2), ", ",
-                 ifelse(p.value < .001, "p < .001", round(p.value, digits = 3))))
-table_groupCondition_aVSA <- summary(pairs(emms_condition)) %>%
-  dplyr::mutate(
-    sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
-    apa = paste0(Sex, ", ",
-                             Group, ", ",
-                             contrast, ": t = ",
-                             round(t.ratio, digits = 2), ", ",
-                             ifelse(p.value < .001, "p < .001", round(p.value, digits = 3))))
 
 # Saving the model
 base::saveRDS(
   object = aVSA_finalModel,
-  file = "Data/Models/Study 1/aVSA_finalModel.rds")
+  file = "Study-1/Models/aVSA_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^aVSA_m"))
@@ -1457,29 +759,12 @@ anova(acoDistance_m2, acoDistance_m3)
 #### Final Model
 ```{r}
 acoDistance_finalModel <- acoDistance_m3
-
 summary(acoDistance_finalModel)
-
-# Compute EMMs for Group and Sex
-emms_group <- emmeans(acoDistance_finalModel, ~ Group | Sex*condition)
-emms_condition <- emmeans(acoDistance_finalModel, ~ condition | Sex*Group)
-
-# Compare EMMs for Group and Sex
-pairs(emms_group)
-pairs(emms_condition)
-
-# APA Reporting
-apa_s1_emmPairs(pairs(emms_group),
-                sex = "F",
-                Condition = "conv")
-apa_s1_emmPairs(pairs(emms_group),
-                sex = "M",
-                Condition = "conv")
 
 # Saving the model
 base::saveRDS(
   object = acoDistance_finalModel,
-  file = "Data/Models/Study 1/acoDistance_finalModel.rds")
+  file = "Study-1/Models/acoDistance_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^acoDistance_m"))
@@ -1555,25 +840,12 @@ anova(F2_Slope_m2, F2_Slope_m3)
 #### Final Model
 ```{r}
 F2_Slope_finalModel <- F2_Slope_m3
-
 summary(F2_Slope_finalModel)
-
-# Compute EMMs for Group and Sex
-emms_group <- emmeans(F2_Slope_finalModel, ~ Group | Sex*condition)
-emms_condition <- emmeans(F2_Slope_finalModel, ~ condition | Sex*Group)
-
-# APA Reporting
-apa_s1_emmPairs(pairs(emms_group),
-                sex = "F",
-                Condition = "conv")
-apa_s1_emmPairs(pairs(emms_group),
-                sex = "M",
-                Condition = "conv")
 
 # Saving the model
 base::saveRDS(
   object = F2_Slope_finalModel,
-  file = "Data/Models/Study 1/F2_Slope_finalModel.rds")
+  file = "Study-1/Models/F2_Slope_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^F2_Slope_m"))
@@ -1649,13 +921,12 @@ anova(kVSA_m2, kVSA_m3)
 #### Final Model
 ```{r}
 kVSA_finalModel <- kVSA_m3
-
 summary(kVSA_finalModel)
 
 # Saving the model
 base::saveRDS(
   object = kVSA_finalModel,
-  file = "Data/Models/Study 1/kVSA_finalModel.rds")
+  file = "Study-1/Models/kVSA_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^kVSA_m"))
@@ -1738,7 +1009,7 @@ summary(kinDistance_finalModel)
 # Saving the model
 base::saveRDS(
   object = kinDistance_finalModel,
-  file = "Data/Models/Study 1/kinDistance_finalModel.rds")
+  file = "Study-1/Models/kinDistance_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^kinDistance_m"))
@@ -1808,251 +1079,23 @@ TB_speedMax_m3 <- lmerTest::lmer(TB_speedMax ~ condition*Group*Sex +
 summary(TB_speedMax_m3)
 
 # Perform likelihood ratio test
-anova(dTB_speedMax_m2, dTB_speedMax_m3)
+anova(TB_speedMax_m2, TB_speedMax_m3)
 ```
 
 #### Final Model
 ```{r}
 TB_speedMax_finalModel <- TB_speedMax_m3
-
 summary(TB_speedMax_finalModel)
 
 # Saving the model
 base::saveRDS(
   object = TB_speedMax_finalModel,
-  file = "Data/Models/Study 1/TB_speedMax_finalModel.rds")
+  file = "Study-1/Models/TB_speedMax_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^dTB_speedMax_m"))
 rm(list=ls(pattern="^emms"))
 rm(modelData)
-```
-
-## Study 1: Model Table
-```{r}
-# Load in the models
-Int_finalModel <- readRDS(file = "Data/Models/Study 1/Int_finalModel.rds")
-AP_finalModel <- readRDS(file = "Data/Models/Study 1/AP_finalModel.rds")
-aVSA_finalModel <- readRDS(file = "Data/Models/Study 1/aVSA_finalModel.rds")
-acoDistance_finalModel <- readRDS(file = "Data/Models/Study 1/acoDistance_finalModel.rds")
-F2_Slope_finalModel <- readRDS(file = "Data/Models/Study 1/F2_Slope_finalModel.rds")
-kVSA_finalModel <- readRDS(file = "Data/Models/Study 1/kVSA_finalModel.rds")
-kinDistance_finalModel <- readRDS(file = "Data/Models/Study 1/kinDistance_finalModel.rds")
-TB_speedMax_finalModel <- readRDS(file = "Data/Models/Study 1/TB_speedMax_finalModel.rds")
-
-# SJ Plot Tab Model
-sjPlot::tab_model(
-  Int_finalModel,
-  AP_finalModel,
-  aVSA_finalModel,
-  acoDistance_finalModel,
-  F2_Slope_finalModel,
-  kVSA_finalModel,
-  kinDistance_finalModel,
-  TB_speedMax_finalModel,
-  show.reflvl = T,
-  file = "Data/Models/Study 1/Study 1_ModelTable.html"
-)
-
-sjPlot::plot_models(
-  Int_finalModel,
-  AP_finalModel,
-  aVSA_finalModel,
-  acoDistance_finalModel,
-  F2_Slope_finalModel,
-  kVSA_finalModel,
-  kinDistance_finalModel,
-  dTB_speedMax_finalModel,
-  Jaw_speedMax_finalModel,
-  std.est = T,
-  p.shape = T,
-  p.threshold = c(0.005555556, 0.0000000001, 0.0000000001))
-
-# Table for Int
-summary_Int <- summary(Int_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(Int_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "Int") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for AP
-summary_AP <- summary(AP_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(AP_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "AP") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for aVSA
-summary_aVSA <- summary(aVSA_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(aVSA_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "aVSA") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for acoDistance
-summary_acoDistance <- summary(acoDistance_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(acoDistance_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "acoDistance") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for F2 Slope
-summary_F2_Slope <- summary(F2_Slope_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(F2_Slope_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "F2_Slope") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for kVSA
-summary_kVSA <- summary(kVSA_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(kVSA_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "kVSA") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for kinDistance
-summary_kinDistance <- summary(kinDistance_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(kinDistance_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "kinDistance") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for dTB Speed
-summary_dTB_speedMax <- summary(dTB_speedMax_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(dTB_speedMax_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "dTB Speed Max") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-# Table for Jaw Speed
-summary_Jaw_speedMax <- summary(Jaw_speedMax_finalModel) %>%
-  .$coefficients %>%
-  as.data.frame() %>%
-  base::merge(
-    .,
-    stats::confint(Jaw_speedMax_finalModel),
-    by = 'row.names') %>%
-  dplyr::rename(Predictors = Row.names) %>%
-  dplyr::mutate(Model = "Jaw Speed Max") %>%
-  dplyr::relocate(Model, .before = Predictors)
-
-summaryTable_data <- dplyr::bind_rows(
-  summary_Int,
-  summary_AP,
-  summary_aVSA,
-  summary_acoDistance,
-  summary_F2_Slope,
-  summary_kVSA,
-  summary_kinDistance,
-  summary_dTB_speedMax,
-  summary_Jaw_speedMax,
-) %>%
-  dplyr::mutate_at(.vars = c("Estimate",
-                             "Std. Error",
-                             "df",
-                             "t value",
-                             "2.5 %",
-                             "97.5 %"),
-                   .funs = round,
-                   digits = 2) %>%
-  dplyr::mutate(CI = paste(`2.5 %`,`97.5 %`, sep = " - ")) %>%
-  dplyr::rename(p = `Pr(>|t|)`) %>%
-  dplyr::mutate(p = round(p, digits = 3)) %>%
-  dplyr::select(Model, Predictors, Estimate,CI,p) %>%
-  dplyr::mutate(
-    Label = case_when(
-      Model == "Int" ~ "Intelligibility Ratings",
-      Model == "AP" ~ "Articulatory Precision Ratings",
-      Model == "aVSA" ~ "Acoustic VSA",
-      Model == "acoDistance" ~ "Acoustic Distance",
-      Model == "F2_Slope" ~ "F2 Slope",
-      Model == "kVSA" ~ "Kinematic VSA",
-      Model == "kinDistance" ~ "Kinematic Distance",
-      Model == "dTB Speed Max" ~ "dTB Speed Max",
-      Model == "Jaw Speed Max" ~ "Jaw Speed Max"),
-  # Formating SexF to Sex [F]
-  Predictors = base::gsub(pattern = "SexF",
-                     replacement = "Sex [F]",
-                     x = Predictors),
-  # Formating GroupPD to Group [PD]
-  Predictors = base::gsub(pattern = "GroupPD",
-                     replacement = "Group [PD]",
-                     x = Predictors),
-  ) %>%
-  dplyr::relocate(Label, .before = Model)
-
-summaryTable <- summaryTable_data %>%
-  gt::gt(
-    rowname_col = "Predictors",
-    groupname_col = "Label") %>%
-  gt::tab_header(
-      title = "Study 1: Model Statistics",
-      subtitle = "The statistics for the various models created in Study 1."
-      ) %>%
-  
-  # Hiding the "Model" column, we will use tab row groups instead
-  gt::cols_hide(columns = Model) %>%
-  
-  # Making the significant p-values bold, based on the alpha
-  gt::tab_style(
-    style = list(
-      gt::cell_text(weight = "bold")
-      ),
-    locations = gt::cells_body(
-      columns = p,
-      rows = p < alpha_s1
-    )
-  ) %>%
-  gt::tab_options(row_group.as_column = TRUE)
-
-summaryTable %>%
-  gt::gtsave(filename = "s1_modelTable.docx",
-             path = "Data/Tables")
-summaryTable %>%
-  gt::gtsave(filename = "s1_modelTable.html",
-             path = "Data/Tables")
-  
-
 ```
 
 
@@ -2065,7 +1108,7 @@ color_PD <- myPal[6]
 
 ## 1. Intelligibility
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/Int_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/Int_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -2192,7 +1235,7 @@ plot_Int
 
 ## 2. Articulatory Precision
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/AP_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/AP_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -2318,7 +1361,7 @@ plot_AP
 
 ## 3. Acoustic VSA
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/aVSA_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/aVSA_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -2433,7 +1476,7 @@ plot_aVSA
 
 ## 4. Acoustic Distance
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/acoDistance_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/acoDistance_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -2596,7 +1639,7 @@ plot_acoDistance
 
 ## 5. F2 Slope
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/F2_Slope_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/F2_Slope_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -2758,7 +1801,7 @@ plot_F2_Slope
 ```
 ## 6. Kinematic VSA
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/kVSA_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/kVSA_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -2842,7 +1885,7 @@ plot_kVSA
 
 ## 7. Kin Distance
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/kinDistance_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/kinDistance_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -3004,7 +2047,7 @@ plot_kinDistance
 
 ## 8. TB Speed
 ```{r}
-model <- base::readRDS("Data/Models/Study 1/TB_speedMax_finalModel.rds") %>%
+model <- base::readRDS("Study-1/Models/TB_speedMax_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
 plotData <- model[[4]][["data"]] %>%
@@ -3964,11 +3007,11 @@ ggsave(filename = "S1_vsaComparison.png",
 # Tables
 ## Emmeans Tables
 ```{r}
-models <- list.files(path = "Data/Models/Study 1/")
+models <- list.files(path = "Study-1/Models/")
 
 k <- 1
 while (k <= NROW(models)) {
-  targetModel <- readRDS(file = paste0("Data/Models/Study 1/",models[k]))
+  targetModel <- readRDS(file = paste0("Study-1/Models/",models[k]))
   targetMeasure <- paste0(targetModel@call[["formula"]][[2]])
   
   # Compute EMMs for Group and Sex
