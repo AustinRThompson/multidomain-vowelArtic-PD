@@ -1,0 +1,1899 @@
+---
+title: "A multidimensional study of articulation deficits in Parkinson’s disease - Data Analysis: Study 2"
+---
+
+```{r}
+rm(list = ls())
+```
+
+# Packages
+```{r}
+library(tidyverse) # install.packages('tidyverse')
+library(emmeans)
+library(ggpubr) # install.packages('ggpubr')
+library(plyr) # install.packages('plyr')
+library(beepr) # install.packages('beepr')
+library(plotrix) # install.packages('plotrix')
+source('../Functions/MSL Tools.R')
+```
+
+# Load Data
+```{r}
+fileInventories <- rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
+  dplyr::rename(DatabaseID = `Sub #`,
+                dxTime = `Time Since Diagnosis`) %>%
+  dplyr::select(DatabaseID, dxTime, MoCA)
+
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::filter(ratingType == "Int") %>%
+  dplyr::filter(condition == "conv") %>%
+  dplyr::group_by(DatabaseID, StudyID) %>%
+  dplyr::summarise(Rating_M = mean(Rating, na.rm = T))
+
+speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(!`Folder 2`:`Sentence Repetition`) %>%
+  base::merge(., fileInventories) %>%
+  base::merge(., listenerRatings) %>%
+  
+  # Making sure dxTime is numeric
+  dplyr::mutate(dxTime = as.numeric(dxTime)) %>%
+  
+  # Refactoring Sex
+  dplyr::mutate(Sex = factor(Sex, 
+                             levels = c(
+                               "M",
+                               "F"
+                               ),
+                             labels = c(
+                               "Male Speakers",
+                               "Female Speakers"
+                             ))) %>%
+  
+  # Severity-surrogate ratings
+  dplyr::mutate(Severity = case_when(
+    Group == "HC" ~ "",
+    Rating_M > 94 ~ "Normal",
+    between(Rating_M, 85, 94.99) ~ "Mild",
+    between(Rating_M, 70, 84.99) ~ "Moderate",
+    between(Rating_M, 45, 69.99) ~ "Severe",
+    Rating_M < 45 ~ "Profound"
+  )) %>%
+  
+  # Removing the MoCA Scores - Not all speakers had them
+  dplyr::select(!MoCA)
+```
+
+
+## Listener Descriptions
+```{r}
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv")
+
+ratingCount <- listenerRatings %>%
+  dplyr::group_by(StudyID, ratingType) %>%
+  dplyr::summarise(n = NROW(Rating)) %>%
+  dplyr::ungroup()
+
+ratingCount %>%
+  dplyr::summarise(mean = mean(n),
+                   sd = sd(n),
+                   min = min(n),
+                   max = max(n))
+
+NROW(unique(listenerRatings$ListenerID))
+
+listenerDemo <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerDemographics.csv")
+NROW(unique(listenerDemo$ListenerID))
+
+# Age and N
+listenerDemo %>%
+  dplyr::mutate(duration = `Duration (in seconds)`/60) %>%
+  #dplyr::group_by(gender) %>%
+  dplyr::summarise(age_m = mean(age, na.rm = T),
+                   age_sd = sd(age, na.rm = T),
+                   min = base::min(age, na.rm = T),
+                   max = base::max(age, na.rm = T),
+                   N = NROW(age),
+                   duration_M = base::mean(duration, na.rm = T),
+                   duration_sd = sd(duration, na.rm = T))
+
+listenerDemo %>%
+  dplyr::mutate(duration = `Duration (in seconds)`/60) %>%
+  dplyr::group_by(gender) %>%
+  dplyr::summarise(N = NROW(age))
+
+listenerDemo %>%
+  dplyr::mutate(duration = `Duration (in seconds)`/60) %>%
+  dplyr::group_by(race) %>%
+  dplyr::summarise(N = NROW(race))
+
+listenerDemo %>%
+  dplyr::mutate(duration = `Duration (in seconds)`/60) %>%
+  dplyr::group_by(ethnicity) %>%
+  dplyr::summarise(N = NROW(ethnicity))
+```
+
+# APA reporting function
+```{r}
+
+apa_lmResults <- function(model, fixedEffect) {
+  
+coefficients <- summary(model)[["coefficients"]] %>%
+  as.data.frame() %>%
+  dplyr::rename(
+    stdError = `Std. Error`,
+    t = `t value`,
+    p = `Pr(>|t|)`) %>%
+  dplyr::mutate(
+    Estimate = round(Estimate, digits = 2),
+    #df = round(df, digits = 2),
+    t = round(t, digits = 2),
+    p = round(p, digits = 3),
+  ) %>%
+  dplyr::filter(rownames(.) == fixedEffect)
+
+if(coefficients$p < .001) {
+  p <- "p<.001"
+} else {
+  p <- paste0("p=",as.numeric(coefficients$p))
+}
+
+df <- as.numeric(model$df.residual)
+t <- paste0("t(",df,")=", as.numeric(coefficients$t))
+
+CI_intervals <- stats::confint(model) %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    ll = round(`2.5 %`, digits = 2),
+    ul = round(`97.5 %`, digits = 2),
+                ) %>%
+  dplyr::select(ll, ul) %>%
+  dplyr::filter(rownames(.) == fixedEffect)
+
+CI <- base::paste0("95% CI [",
+                  as.numeric(CI_intervals$ll),
+                  ", ",
+                  as.numeric(CI_intervals$ul),
+                  "]")
+
+formula <- paste(t, p, CI, sep = ", ")
+
+return(formula)
+
+rm(coefficients, t, p, CI_intervals, CI)
+}
+
+apa_lmeResults <- function(model, fixedEffect) {
+  
+coefficients <- summary(model)[["coefficients"]] %>%
+  as.data.frame() %>%
+  dplyr::rename(
+    stdError = `Std. Error`,
+    t = `t value`,
+    p = `Pr(>|t|)`) %>%
+  dplyr::mutate(
+    Estimate = round(Estimate, digits = 2),
+    df = round(df, digits = 2),
+    t = round(t, digits = 2),
+    p = round(p, digits = 3),
+  ) %>%
+  dplyr::filter(rownames(.) == fixedEffect)
+
+if(coefficients$p < .001) {
+  p <- "p<.001"
+} else {
+  p <- paste0("p=",as.numeric(coefficients$p))
+}
+
+t <- paste0("t(",as.numeric(coefficients$df),")=", as.numeric(coefficients$t))
+
+CI_intervals <- stats::confint(model) %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    ll = round(`2.5 %`, digits = 2),
+    ul = round(`97.5 %`, digits = 2),
+                ) %>%
+  dplyr::select(ll, ul) %>%
+  dplyr::filter(rownames(.) == fixedEffect)
+
+CI <- base::paste0("95% CI [",
+                  as.numeric(CI_intervals$ll),
+                  ", ",
+                  as.numeric(CI_intervals$ul),
+                  "]")
+
+formula <- paste(t, p, CI, sep = ", ")
+
+return(formula)
+
+rm(coefficients, t, p, CI_intervals, CI)
+}
+
+apa_levelDescriptives <- function(data,level, outcome) {
+
+  
+descriptiveData <- modelData %>%
+  dplyr::select(Group, Sex, sym(outcome)) %>%
+  dplyr::rename(outcome = 3)
+
+group <- descriptiveData %>%
+  dplyr::group_by(Group) %>%
+  dplyr::summarize(M = mean(outcome, na.rm = T),
+                SD = sd(outcome, na.rm = T),
+                .groups = 'drop') %>%
+  dplyr::mutate(M = round(M, digits = 2),
+                SD = round(SD, digits = 2)) %>%
+  dplyr::rename(Grouping = 1) %>%
+  as.data.frame()
+
+sex <- descriptiveData %>%
+  dplyr::group_by(Sex) %>%
+  dplyr::summarize(M = mean(outcome, na.rm = T),
+                SD = sd(outcome, na.rm = T),
+                .groups = 'drop') %>%
+  dplyr::mutate(M = round(M, digits = 2),
+                SD = round(SD, digits = 2)) %>%
+  dplyr::rename(Grouping = 1) %>%
+  as.data.frame()
+
+groupSex <- descriptiveData %>%
+  dplyr::group_by(Group, Sex) %>%
+  dplyr::summarize(M = mean(outcome, na.rm = T),
+                SD = sd(outcome, na.rm = T),
+                .groups = 'drop') %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(M = round(M, digits = 2),
+                SD = round(SD, digits = 2),
+                Grouping = paste(Group, Sex, sep = "_")) %>%
+  dplyr::select(Grouping, M, SD) %>%
+  as.data.frame()
+
+descriptives <- rbind(group,
+                      sex,
+                      groupSex) %>%
+  dplyr::filter(Grouping == level)
+  
+  output <- paste0(level,": (M=",descriptives$M,", SD=",descriptives$SD,")")
+  
+  return(output)
+  
+  rm(descriptives, group, sex, groupSex)
+  
+}
+
+
+apa_emmsPairs <- function(emmsPair, sex, Condition) {
+  summary_table <- summary(emmsPair, infer = TRUE) %>%
+    dplyr::filter(Sex == sex) %>%
+    dplyr::filter(condition == condition)
+  
+if(summary_table$p.value < .001) {
+  p <- "p < .001"
+} else {
+    p <- paste0("p=",
+                round(summary_table$p.value, digits = 3))
+  }
+  
+  if("t.ratio" %in% colnames(summary_table)) {
+  output <- paste(
+    sex,
+    ", HC - PD: (",
+    "t(",
+    round(summary_table$df, digits = 2),
+    ")=",
+    as.numeric(round(summary_table$t.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  }
+  
+  
+  if("z.ratio" %in% colnames(summary_table)) {
+  output <- paste(
+    sex,
+    ", HC - PD: (",
+    "z = (",
+    as.numeric(round(summary_table$z.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  }
+  
+  return(output)
+}
+
+apa_s1_emmPairs <- function(emmsPair, sex, Condition) {
+  summary_table <- summary(emmsPair, infer = TRUE) %>%
+    dplyr::filter(Sex == sex) %>%
+    dplyr::filter(condition == Condition)
+  
+  if(summary_table$p.value < .001) {
+  p <- "p<.001"
+} else {
+    p <- paste0("p=",
+                round(summary_table$p.value, digits = 3))
+  }
+  
+  if("t.ratio" %in% colnames(summary_table)) {
+  output <- paste(
+    sex,
+    ", HC - PD: (",
+    "t(",
+    round(summary_table$df, digits = 2),
+    ")=",
+    as.numeric(round(summary_table$t.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  }
+  
+  
+  if("z.ratio" %in% colnames(summary_table)) {
+  output <- paste(
+    sex,
+    ", HC - PD: (",
+    "z=",
+    as.numeric(round(summary_table$z.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  }
+  
+  return(output)
+}
+
+apa_s2_emmPairs <- function(emmsPair, Sex_Input, Group_Input, Contrast_Input) {
+  summary_table <- summary(emmsPair, infer = TRUE) %>%
+    dplyr::filter(Sex == Sex_Input) %>%
+    dplyr::filter(Group == Group_Input) %>%
+    dplyr::filter(contrast == Contrast_Input)
+  
+  if(summary_table$p.value < .001) {
+  p <- "p<.001"
+} else {
+    p <- paste0("p=",
+                round(summary_table$p.value, digits = 3))
+  }
+  
+  if("t.ratio" %in% colnames(summary_table)) {
+  output <- paste(
+    Sex_Input,
+    ", ",
+    Group_Input,
+    ", ",
+    Contrast_Input,
+    ": (",
+    "t(",
+    round(summary_table$df, digits = 2),
+    ")=",
+    as.numeric(round(summary_table$t.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  }
+  
+  
+  if("z.ratio" %in% colnames(summary_table)) {
+  output <- paste(
+    Sex_Input,
+    ", ",
+    Group_Input,
+    ", ",
+    Contrast_Input,
+    ": (",
+    "z=",
+    as.numeric(round(summary_table$z.ratio, 2)),
+    ", ",
+    p,
+    ")",
+    sep = "")
+  }
+  
+  return(output)
+}
+
+
+
+```
+
+# Study 2
+## Correlations
+```{r}
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                aVSA = aVSA/1000)
+
+corrr::correlate(vsaMeasures %>% dplyr::select(Int_M, AP_M, aVSA, kVSA))
+
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+
+corTable <- corrr::correlate(aiMeasures %>% dplyr::select(Int_M, AP_M, acoDistance, F2_Slope, kinDistance, TB_speedMax), method = "pearson")
+
+stats::cor.test(x = vsaMeasures$aVSA,
+                y = vsaMeasures$kVSA,
+                method = "pearson")
+```
+
+## Intelligibility Models
+### 1. VSA Measures
+```{r}
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                aVSA = aVSA/1000)
+
+modelData <- vsaMeasures
+
+# Taking out the trash
+rm(vsaMeasures)
+```
+
+M0 - Fully unconditional model
+```{r}
+# Building the model
+Int_VSA_m0 <- lmerTest::lmer(Int_M ~ 1 +
+                               (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_VSA_m0)
+
+```
+
+M1 - aVSA
+```{r}
+# Building the model
+Int_VSA_m1 <- lmerTest::lmer(Int_M ~ aVSA +
+                               (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(Int_VSA_m1)
+
+# Perform likelihood ratio test
+anova(Int_VSA_m0, Int_VSA_m1)
+```
+
+M2 - aVSA + kVSA
+```{r}
+# Building the model
+Int_VSA_m2 <- lmerTest::lmer(Int_M ~ aVSA +
+                               kVSA +
+                               (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(Int_VSA_m2)
+
+# Perform likelihood ratio test
+#anova(Int_VSA_m1, Int_VSA_m2)
+```
+
+M3 - aVSA + kVSA + Sex
+```{r}
+# Building the model
+Int_VSA_m3 <- lmerTest::lmer(Int_M ~ aVSA +
+                               kVSA +
+                               Sex +
+                               (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(Int_VSA_m3)
+
+# Perform likelihood ratio test
+#anova(Int_VSA_m1, Int_VSA_m3)
+```
+M4 - aVSA*Sex + kVSA*Sex
+```{r}
+# Building the model
+Int_VSA_m4 <- lmerTest::lmer(Int_M ~ aVSA*Sex +
+                          kVSA*Sex +
+                          (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(Int_VSA_m4)
+
+# Perform likelihood ratio test
+anova(Int_VSA_m3, Int_VSA_m4)
+```
+M5 - aVSA*Sex
+```{r}
+# Building the model
+Int_VSA_m5 <- lmerTest::lmer(Int_M ~ aVSA*Sex +
+                          (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(Int_VSA_m5)
+
+# Perform likelihood ratio test
+anova(Int_VSA_m1, Int_VSA_m5)
+```
+
+#### Final Model
+```{r}
+Int_VSA_finalModel <- Int_VSA_m5
+
+summary(Int_VSA_finalModel)
+
+# Obtain R-squared values using r.squaredGLMM
+r_squared <- MuMIn::r.squaredGLMM(Int_VSA_finalModel)
+
+# Compare the R-squared values
+cat("R-squared for this model is", r_squared, "\n")
+
+emms <- emmeans(Int_VSA_finalModel, ~ Sex)
+
+# Compare EMMs for Condition and Sex
+pairs(emms,
+      adjust = "Tukey"
+      )
+
+```
+
+#### Table
+```{r}
+sjPlot::tab_model(
+  Int_VSA_m1,
+  Int_VSA_m2,
+  #Int_VSA_m3,
+  Int_VSA_m4,
+  Int_VSA_m5,
+  file = "Tables/Table S1_Int VSA Model.html"
+)
+```
+
+### 2. ai Measures
+```{r}
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+
+modelData <- aiMeasures
+
+# Taking out the trash
+rm(aiMeasures)
+```
+
+M0 - Fully unconditional model
+```{r}
+# Building the model
+Int_ai_m0 <- lmerTest::lmer(Int_M ~ 1 +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m0)
+
+```
+
+M1 - acoDistance
+```{r}
+# Building the model
+Int_ai_m1 <- lmerTest::lmer(Int_M ~ acoDistance +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m1)
+
+# Perform likelihood ratio test
+anova(Int_ai_m0, Int_ai_m1)
+
+```
+M2 - acoDistance + F2_Slope
+```{r}
+# Building the model
+Int_ai_m2 <- lmerTest::lmer(Int_M ~ acoDistance +
+                              F2_Slope +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m2)
+
+# Perform likelihood ratio test
+anova(Int_ai_m1, Int_ai_m2)
+
+```
+
+M3 - acoDistance + F2_Slope + kinDistance
+```{r}
+# Building the model
+Int_ai_m3 <- lmerTest::lmer(Int_M ~ acoDistance +
+                              F2_Slope +
+                              kinDistance +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m3)
+
+# Perform likelihood ratio test
+#anova(Int_ai_m2, Int_ai_m3)
+
+```
+M4 - acoDistance + F2_Slope + kinDistance + TB_Speed
+```{r}
+# Building the model
+Int_ai_m4 <- lmerTest::lmer(Int_M ~ acoDistance +
+                              F2_Slope +
+                              kinDistance +
+                              TB_speedMax +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m4)
+
+# Perform likelihood ratio test
+#anova(Int_ai_m3, Int_ai_m4)
+
+```
+M5 - acoDistance*Sex + F2_Slope*Sex + kinDistance*Sex + TB_Speed*Sex
+```{r}
+# Building the model
+Int_ai_m5 <- lmerTest::lmer(Int_M ~ acoDistance*Sex +
+                              F2_Slope*Sex +
+                              kinDistance*Sex +
+                              TB_speedMax*Sex +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m5)
+
+# Perform likelihood ratio test
+anova(Int_ai_m4, Int_ai_m5)
+
+```
+M6 - acoDistance*Sex + kinDistance*Sex
+```{r}
+# Building the model
+Int_ai_m6 <- lmerTest::lmer(Int_M ~ acoDistance*Sex +
+                              #F2_Slope*Sex +
+                              kinDistance*Sex +
+                              #TB_speedMax*Sex +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m6)
+
+# Perform likelihood ratio test
+#anova(Int_ai_m5, Int_ai_m6)
+
+```
+M7 - kinDistance + Sex
+```{r}
+# Building the model
+Int_ai_m7 <- lmerTest::lmer(Int_M ~ kinDistance + Sex +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m7)
+
+# Perform likelihood ratio test
+anova(Int_ai_m6, Int_ai_m7)
+
+```
+
+M8 - kinDistance*Sex
+```{r}
+# Building the model
+Int_ai_m8 <- lmerTest::lmer(Int_M ~ kinDistance*Sex +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(Int_ai_m8)
+
+# Perform likelihood ratio test
+anova(Int_ai_m7, Int_ai_m8)
+
+```
+#### Final Model
+```{r}
+Int_ai_finalModel <- Int_ai_m7
+
+summary(Int_ai_finalModel)
+```
+#### Table
+```{r}
+sjPlot::tab_model(
+  Int_ai_m1,
+  Int_ai_m2,
+  Int_ai_m3,
+  Int_ai_m4,
+  Int_ai_m5,
+  #Int_ai_m6,
+  Int_ai_m7,
+  show.ci = F,
+  file = "Tables/Table S2_Int Diphthong Model.html"
+)
+```
+
+## Articulatory Precision Models
+### 3. VSA Measures
+```{r}
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                aVSA = aVSA/1000)
+
+modelData <- vsaMeasures
+
+# Taking out the trash
+rm(vsaMeasures)
+```
+
+M0 - Fully unconditional model
+```{r}
+# Building the model
+AP_VSA_m0 <- lmerTest::lmer(AP_M ~ 1 +
+                              (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_VSA_m0)
+
+```
+
+M1 - aVSA
+```{r}
+# Building the model
+AP_VSA_m1 <- lmerTest::lmer(AP_M ~ aVSA +
+                              (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_VSA_m1)
+
+# Perform likelihood ratio test
+anova(AP_VSA_m0, AP_VSA_m1)
+```
+
+M2 - aVSA + kVSA
+```{r}
+# Building the model
+AP_VSA_m2 <- lmerTest::lmer(AP_M ~ aVSA +
+                              kVSA +
+                              (1 | StudyID),
+                     data = modelData)
+
+
+# Model summary
+summary(AP_VSA_m2)
+
+# Perform likelihood ratio test
+#anova(AP_VSA_m1, AP_VSA_m2)
+```
+
+M3 - aVSA + kVSA + Sex
+```{r}
+# Building the model
+AP_VSA_m3 <- lmerTest::lmer(AP_M ~ aVSA + kVSA + Sex +
+                           (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(AP_VSA_m3)
+
+# Perform likelihood ratio test
+#anova(AP_VSA_m1, AP_VSA_m3)
+```
+M4 - aVSA*Sex + kVSA*Sex
+```{r}
+# Building the model
+AP_VSA_m4 <- lmerTest::lmer(AP_M ~ aVSA*Sex +
+                              kVSA*Sex +
+                           (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(AP_VSA_m4)
+
+# Perform likelihood ratio test
+anova(AP_VSA_m3, AP_VSA_m4)
+```
+M5 - aVSA*Sex
+```{r}
+# Building the model
+AP_VSA_m5 <- lmerTest::lmer(AP_M ~ aVSA*Sex +
+                              (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(AP_VSA_m5)
+
+# Perform likelihood ratio test
+#anova(AP_VSA_m4, AP_VSA_m5)
+```
+#### Final Model
+```{r}
+AP_VSA_finalModel <- AP_VSA_m5
+
+summary(AP_VSA_finalModel)
+
+emms_sex <- emmeans(AP_VSA_finalModel, ~ Sex)
+# Compare EMMs for Condition and Sex
+pairs(emms_sex,
+      adjust = "Tukey"
+      )
+```
+
+#### Table
+```{r}
+sjPlot::tab_model(
+  AP_VSA_m1,
+  AP_VSA_m2,
+  #AP_VSA_m3,
+  AP_VSA_m4,
+  AP_VSA_m5,
+  file = "Tables/Table S3_AP VSA Model.html"
+)
+```
+### 4. ai Measures
+```{r}
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+
+modelData <- aiMeasures
+
+# Taking out the trash
+rm(aiMeasures)
+```
+
+M0 - Fully unconditional model
+```{r}
+# Building the model
+AP_ai_m0 <- lmerTest::lmer(AP_M ~ 1 +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m0)
+
+```
+
+M1 - acoDistance
+```{r}
+# Building the model
+AP_ai_m1 <- lmerTest::lmer(AP_M ~ acoDistance +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m1)
+
+# Perform likelihood ratio test
+anova(AP_ai_m0, AP_ai_m1)
+
+```
+M2 - acoDistance + F2_Slope
+```{r}
+# Building the model
+AP_ai_m2 <- lmerTest::lmer(AP_M ~ acoDistance +
+                              F2_Slope +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m2)
+
+# Perform likelihood ratio test
+anova(AP_ai_m1, AP_ai_m2)
+
+```
+
+M3 - acoDistance + F2_Slope + kinDistance
+```{r}
+# Building the model
+AP_ai_m3 <- lmerTest::lmer(AP_M ~ acoDistance +
+                              F2_Slope +
+                              kinDistance +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m3)
+
+# Perform likelihood ratio test
+#anova(AP_ai_m2, AP_ai_m3)
+
+```
+M4 - acoDistance + F2_Slope + kinDistance + TB_Speed
+```{r}
+# Building the model
+AP_ai_m4 <- lmerTest::lmer(AP_M ~ acoDistance +
+                              F2_Slope +
+                              kinDistance +
+                              TB_speedMax +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m4)
+
+# Perform likelihood ratio test
+#anova(AP_ai_m3, AP_ai_m4)
+performance::check_collinearity(AP_ai_m4)
+```
+M5 - acoDistance*Sex + F2_Slope*Sex + kinDistance*Sex + TB_Speed*Sex
+```{r}
+# Building the model
+AP_ai_m5 <- lmerTest::lmer(AP_M ~ acoDistance*Sex +
+                              F2_Slope*Sex +
+                              kinDistance*Sex +
+                              TB_speedMax*Sex +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m5)
+
+# Perform likelihood ratio test
+anova(AP_ai_m4, AP_ai_m5)
+
+```
+M6 - kinDistance*Sex
+```{r}
+# Building the model
+AP_ai_m6 <- lmerTest::lmer(AP_M ~ kinDistance*Sex +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m6)
+
+# Perform likelihood ratio test
+#anova(AP_ai_m5, AP_ai_m6)
+
+```
+M7 - kinDistance + Sex
+```{r}
+# Building the model
+AP_ai_m7 <- lmerTest::lmer(AP_M ~ kinDistance + Sex +
+                         (1 | StudyID),
+                     data = modelData)
+# Model summary
+summary(AP_ai_m7)
+
+# Perform likelihood ratio test
+anova(AP_ai_m6, AP_ai_m7)
+
+```
+#### Final Model
+```{r}
+AP_ai_finalModel <- AP_ai_m7
+
+summary(AP_ai_finalModel)
+
+```
+
+#### Table
+```{r}
+sjPlot::tab_model(
+  AP_ai_m1,
+  AP_ai_m2,
+  AP_ai_m3,
+  AP_ai_m4,
+  AP_ai_m5,
+  AP_ai_m7,
+  show.ci = F,
+  file = "Tables/Table S4_AP Diphthong Model.html"
+)
+```
+
+## Final Model Table
+```{r}
+
+sjPlot::tab_model(
+  Int_VSA_finalModel,
+  AP_VSA_finalModel,
+  file = "Tables/Table S5_VSA Final Model Table.html"
+)
+
+sjPlot::tab_model(
+  Int_ai_finalModel,
+  AP_ai_finalModel,
+  file = "Tables/Table S6_Diphthong Final Model Table.html"
+)
+```
+
+## Comparing Models
+```{r}
+# VSA ----
+## Fit model 1
+model1 <- Int_VSA_finalModel
+## Fit model 2
+model2 <- AP_VSA_finalModel
+
+## Compare R-squared values
+r_squared1 <- summary(model1)$r.squared
+r_squared2 <- summary(model2)$r.squared
+
+## Compare the R-squared values
+cat("R-squared for model 1:", r_squared1, "\n")
+cat("R-squared for model 2:", r_squared2, "\n")
+
+# kinDistance ----
+library(MuMIn) # install.packages('MuMIn')
+
+## Fit model 1
+model1 <- Int_ai_finalModel
+## Fit model 2
+model2 <- AP_ai_finalModel
+
+## Compare R-squared values
+r_squared1 <- MuMIn::r.squaredGLMM(model1)[2]
+r_squared2 <- MuMIn::r.squaredGLMM(model2)[2]
+
+## Compare the R-squared values
+cat("R-squared for model 1 (Int):", r_squared1, "\n")
+cat("R-squared for model 2 (AP):", r_squared2, "\n")
+```
+
+# Plots
+```{r}
+myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
+color_HC <- myPal[2] 
+color_PD <- myPal[6]
+```
+
+## 1. Int & AP ~ VSA
+```{r}
+# Just scatter plot ----
+plot_VSA_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   ))) %>%
+  tidyr::pivot_longer(cols = c(Int_M,AP_M),
+                      names_to = "ratingType",
+                      values_to = "Rating") %>%
+  dplyr::mutate(ratingType = factor(ratingType,
+                                    levels = c("Int_M","AP_M"),
+                                    labels = c("Intelligibility (VAS)",
+                                               "Articulatory Precision (VAS)")),
+                aVSA = aVSA/1000)
+
+
+  
+# Making the Plot
+plot_VSA <- plot_VSA_data %>%
+  ggplot() +
+  aes(y = Rating,
+      x = aVSA) +
+  geom_point(aes(
+    shape = Condition,
+    color = Group),
+    alpha = 1) +
+  geom_smooth(method = "lm",
+              color = "#2A2A28",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Facet by Sex
+  facet_grid(ratingType ~ Sex,
+             scales = "free_x") +
+  
+  # Changing the y axis scale
+  #coord_cartesian(ylim = c(0,850)) +
+  #scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_VSA
+
+# Scatter plot + Model Predictions ----
+  modelData <- rbind(Int_VSA_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(Int_VSA_finalModel),
+                                    ratingType = "Int") %>%
+                      dplyr::rename(Rating = Int_M),
+                    AP_VSA_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(AP_VSA_finalModel),
+                                    ratingType = "AP") %>%
+                      dplyr::rename(Rating = AP_M)) %>%
+  dplyr::select(!Sex) %>%
+  dplyr::mutate(ratingType = case_when(
+    ratingType == "Int" ~ "Intelligibility (VAS)",
+    ratingType == "AP" ~ "Articulatory Precision (VAS)"
+  )) %>%
+  base::merge(., plot_VSA_data) %>%
+  dplyr::mutate(Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   )),
+                ratingType = factor(ratingType,
+                                    levels = c(
+                                      "Intelligibility (VAS)",
+                                      "Articulatory Precision (VAS)"
+                                    )))
+  
+plot_VSA_modelData <- modelData %>%
+  ggplot() +
+  aes(y = Rating,
+      x = aVSA) +
+  
+  # Adding the points
+  geom_point(aes(
+    shape = Condition,
+    color = Group
+    ),
+    alpha = .3) +
+
+  # Adding the model prediction lines
+  geom_line(aes(y = fit,
+                x = aVSA,
+                group = StudyID,
+                color = Group),
+            size = .8) +
+  
+  # Facet by Sex
+  facet_grid(ratingType ~ Sex,
+             scales = "free_x") +
+
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_VSA_modelData
+```
+
+## 2. Int & AP ~ kinDistance
+```{r}
+# Just scatter plots ----
+plot_ai_data <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   ))) %>%
+  tidyr::pivot_longer(cols = c(Int_M,AP_M),
+                      names_to = "ratingType",
+                      values_to = "Rating") %>%
+  dplyr::mutate(ratingType = factor(ratingType,
+                                    levels = c("Int_M","AP_M"),
+                                    labels = c("Intelligibility (VAS)",
+                                               "Articulatory Precision (VAS)")))
+
+
+# Making the Plot
+plot_ai <- plot_ai_data %>%
+  ggplot() +
+  aes(y = Rating,
+      x = kinDistance) +
+  geom_point(aes(
+    shape = Condition,
+    color = Group),
+    alpha = .8) +
+  geom_smooth(
+    method = "lm",
+              color = "#2A2A28",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Facet by Sex
+  facet_grid(ratingType~Sex,
+             scales = "free_x") +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Kinematic (TB) Distance (mm'^2*")")) +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_ai
+
+# Scatter plot + Model Predictions  ----
+## Get the model data
+  modelData <- rbind(Int_ai_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(Int_ai_finalModel),
+                                    ratingType = "Int") %>%
+                      dplyr::rename(Rating = Int_M),
+                    AP_ai_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(AP_ai_finalModel),
+                                    ratingType = "AP") %>%
+                      dplyr::rename(Rating = AP_M)) %>%
+  dplyr::select(!Sex) %>%
+  dplyr::mutate(ratingType = case_when(
+    ratingType == "Int" ~ "Intelligibility (VAS)",
+    ratingType == "AP" ~ "Articulatory Precision (VAS)"
+  )) %>%
+  base::merge(., plot_ai_data) %>%
+  dplyr::mutate(Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   )),
+                ratingType = factor(ratingType,
+                                    levels = c(
+                                      "Intelligibility (VAS)",
+                                      "Articulatory Precision (VAS)"
+                                    )))
+
+
+
+## Making the Plot
+plot_ai_speakerSlopes <- modelData %>%
+  ggplot() +
+  aes(y = Rating,
+      x = kinDistance) +
+  geom_point(aes(
+    shape = Condition,
+    color = Group
+    ),
+    alpha = .3) +
+
+  # Adding the model prediction lines
+  geom_line(aes(y = fit,
+                x = kinDistance,
+                group = StudyID,
+                color = Group),
+            size = .8) +
+  
+  # Facet by Sex
+  facet_grid(ratingType~Sex,
+             scales = "free_x") +
+  
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Kinematic (TB) Distance (mm'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_ai_speakerSlopes
+
+```
+
+## Scatterplots
+```{r}
+plot_scatterplot_ai <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less Clear",
+                                     "Conversational",
+                                     "More Clear"
+                                   ))) %>%
+  tidyr::pivot_longer(cols = c(Int_M,AP_M),
+                      names_to = "ratingType",
+                      values_to = "Rating") %>%
+  dplyr::mutate(ratingType = factor(ratingType,
+                                    levels = c("Int_M","AP_M"),
+                                    labels = c("Intelligibility (VAS)",
+                                               "Articulatory Precision (VAS)"))) %>%
+  dplyr::select(StudyID, Sex, Group, condition, rep,
+                ratingType, Rating,
+                acoDistance, kinDistance,
+                F2_Slope, TB_speedMax) %>%
+  tidyr::pivot_longer(cols = c(acoDistance, kinDistance,
+                F2_Slope, TB_speedMax),
+                names_to = "Measure",
+                values_to = "Value")
+
+plot_scatterplot_ai %>%
+  dplyr::filter(Sex == "Male Speakers") %>%
+  
+  # Making the plot
+  ggplot() +
+  aes(x = Value,
+      y = Rating) +
+  
+  # Adding the points
+  geom_point(aes(color = Group,
+                 shape = condition),
+             alpha = .9) +
+  
+  # Adding the "lm" smoothed regression line
+    geom_smooth(method = "lm",
+              color = "#2A2A28",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Faceting by Perceptual measure and Target Measures
+  facet_grid(ratingType ~ Measure, scales = "free") +
+  
+  # Making the perceptual measures range from 0-100
+  lims(y = c(0,100)) +
+  
+  # Adding a title
+  ggtitle(label = "Male Speakers") +
+  
+  # Changing the color & point shape
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15)) +
+
+  # Modifying the theme
+  theme_minimal() +
+  theme(aspect.ratio = 1)
+
+ggsave(filename = "S3_Scatterplots_male speakers.png",
+       plot = last_plot(),
+       path = "Data/Plots/Results",
+       height = 3.5,
+       width = 8,
+       units = "in",
+       scale = 1.3)
+```
+## Correlation Table
+```{r}
+library(ggcorrplot) # install.packages("ggcorrplot")
+
+  # aI Measures ----
+aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+
+corTable <- corrr::correlate(aiMeasures %>%
+                               dplyr::select(Int_M,
+                                             AP_M,
+                                             acoDistance,
+                                             F2_Slope,
+                                             kinDistance,
+                                             TB_speedMax
+                                             ) %>%
+                               dplyr::rename(`Intelligibility` = Int_M,
+                                             `Articulatory Precision` = AP_M,
+                                             `Acoustic Distance` = acoDistance,
+                                             `F2 Slope` = F2_Slope,
+                                             `Kinematic Distance` = kinDistance,
+                                             `TB Speed` = TB_speedMax),
+                             method = "pearson", diagonal = 1) %>%
+  dplyr::mutate_at(.vars = c("Intelligibility",
+                             "Articulatory Precision",
+                             "Acoustic Distance",
+                             "Kinematic Distance",
+                             "F2 Slope",
+                             "TB Speed"),
+                   .funs = round,
+                   digits = 2) %>%
+  column_to_rownames(var = "term")
+
+corrPlot_ai <- ggcorrplot(
+    corTable,
+    hc.order = TRUE,
+    type = "lower",
+    outline.col = "white",
+    lab = TRUE,
+    ggtheme = ggplot2::theme_classic) +
+    scale_fill_gradient2(limit = c(-0.5,1),
+                         low = color_PD,
+                         high =  color_HC,
+                         mid = "white",
+                         midpoint = 0,
+                         name = "Correlation\nCoefficient\n")
+  
+  
+  # VSA Measures ----
+vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+
+corTable <- corrr::correlate(vsaMeasures %>%
+                               dplyr::select(Int_M,
+                                             AP_M,
+                                             aVSA,
+                                             kVSA,
+                                             ) %>%
+                               dplyr::rename(`Intelligibility` = Int_M,
+                                             `Articulatory Precision` = AP_M,
+                                             `Acoustic VSA` = aVSA,
+                                             `Kinematic VSA` = kVSA),
+                             method = "pearson", diagonal = 1) %>%
+  dplyr::mutate_at(.vars = c("Intelligibility",
+                             "Articulatory Precision",
+                             "Acoustic VSA",
+                             "Kinematic VSA"),
+                   .funs = round,
+                   digits = 2) %>%
+  column_to_rownames(var = "term") %>%
+  dplyr::mutate(`Acoustic VSA` = `Acoustic VSA`/1000)
+
+corrPlot_vsa <- ggcorrplot(
+    corTable,
+    hc.order = F,
+    type = "lower",
+    outline.col = "white",
+    lab = TRUE,
+    ggtheme = ggplot2::theme_classic) +
+    scale_fill_gradient2(limit = c(-0.5,1),
+                         low = color_PD,
+                         high =  color_HC,
+                         mid = "white",
+                         midpoint = 0,
+                         name = "Correlation\nCoefficient\n")
+  
+
+  
+  corrPlot <- corrPlot_vsa + corrPlot_ai + patchwork::plot_layout(guides = "collect")
+  corrPlot
+  
+
+```
+# Plots
+## Motor Equivilance Plot
+PDM04 - PDM06
+```{r}
+aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
+
+speakers <- aiMeasures %>%
+  dplyr::select(StudyID, Sex, Group, Age) %>%
+  base::unique()
+
+speakerContrast <- aiMeasures %>%
+  dplyr::filter(condition == "conv") %>%
+  dplyr::filter(StudyID == "HCF03" | StudyID == "HCF05") %>%
+  dplyr::mutate(duration = duration*1000)
+
+speakerContrast_pair1 <- rbind(
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "PDM04" & rep == 4),
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "PDM06" & rep == 5)
+)
+
+speakerContrast_pair2 <- rbind(
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCF03" & rep == 2),
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCF05" & rep == 1)
+)
+
+speakerContrast_pair3 <- rbind(
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCM06" & rep == 4), # 4 is good
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCM07" & rep == 2) # 2 is good
+)
+
+speakerContrast_pair4 <- rbind(
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCM07" & rep == 3),
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCM08" & rep == 1)
+)
+
+speakerContrast_pair5 <- rbind(
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCM05" & rep == 1),
+  aiMeasures %>%
+    dplyr::filter(condition == "conv") %>%
+    dplyr::filter(StudyID == "HCM08" & rep == 2)
+)
+
+
+targetContrastPair <- speakerContrast_pair4
+speaker1 <- targetContrastPair %>%
+  dplyr::filter(row_number() == 1)
+speaker2 <- targetContrastPair %>%
+  dplyr::filter(row_number() == 2)
+
+# Acoustic Data
+acousticSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
+                                                            speaker1$onset,
+                                                            speaker1$offset) |
+                  DatabaseID == speaker2$DatabaseID & between(time,
+                                                            speaker2$onset,
+                                                            speaker2$offset))
+
+
+plot_acousticSegment <- acousticSegments %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(time = time - min(time)) %>%
+  ggplot() +
+  aes(x = F2,
+      y = F1,
+      alpha = time) +
+  geom_path() +
+  geom_point() +
+  scale_y_reverse() +
+  facet_wrap(~DatabaseID) +
+  theme_minimal() +
+  theme(aspect.ratio = 1)
+plot_acousticSegment
+
+# Movement Data
+movementSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
+                                                            speaker1$onset,
+                                                            speaker1$offset) |
+                  DatabaseID == speaker2$DatabaseID & between(time,
+                                                            speaker2$onset,
+                                                            speaker2$offset))
+
+plot_movementSegments <- movementSegments %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(time = time - min(time),
+                tb_x = scale(tb_x, center = T, scale = F)) %>%
+  ggplot() +
+  aes(x = tb_x,
+      y = tb_y,
+      alpha = time) +
+  geom_path() +
+  geom_point() +
+  facet_wrap(~DatabaseID) +
+  theme_minimal() +
+  theme(aspect.ratio = 1) +
+  labs(x = "Posterior-Anterior (x)",
+       y = "Inferior-Superior (y)")
+plot_movementSegments
+
+library(patchwork)
+plot_speakerContrast <- plot_acousticSegment +
+  plot_movementSegments +
+  patchwork::plot_layout(ncol = 1)
+plot_speakerContrast
+```
+
+# Contrast - 1 dimension
+```{r}
+targetContrastPair <- speakerContrast_pair5
+speaker1 <- targetContrastPair %>%
+  dplyr::filter(row_number() == 1)
+speaker2 <- targetContrastPair %>%
+  dplyr::filter(row_number() == 2)
+
+
+# Acoustic Data
+acousticSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
+                                                            speaker1$onset,
+                                                            speaker1$offset) |
+                  DatabaseID == speaker2$DatabaseID & between(time,
+                                                            speaker2$onset,
+                                                            speaker2$offset))
+# Movement Data
+movementSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
+                                                            speaker1$onset,
+                                                            speaker1$offset) |
+                  DatabaseID == speaker2$DatabaseID & between(time,
+                                                            speaker2$onset,
+                                                           speaker2$offset))
+
+# Combining data
+plotData <- rbind(acousticSegments %>%
+                    dplyr::group_by(DatabaseID) %>%
+                    dplyr::mutate(time = time - min(time),
+                                  xlab = "Acoustic (F2)") %>%
+                    dplyr::select(DatabaseID, time, xlab, F2) %>%
+                    dplyr::rename(x = F2),
+                  
+                  movementSegments %>%
+                    dplyr::group_by(DatabaseID) %>%
+                    dplyr::mutate(time = time - min(time),
+                                  xlab = "Movement (x)") %>%
+                  dplyr::select(DatabaseID, time, xlab, tb_x) %>%
+                    dplyr::rename(x = tb_x)) %>%
+  dplyr::group_by(DatabaseID, xlab) %>%
+  dplyr::mutate(x = scale(x, center = T, scale = F))
+
+
+
+plot <- plotData %>%
+  ggplot() +
+  aes(x = time,
+      y = x,
+      alpha = time) +
+  geom_path() +
+  geom_point() +
+  facet_grid(xlab~DatabaseID,
+             scales = "free_y") +
+  theme_classic() +
+  theme(aspect.ratio = 1) +
+  labs(x = "time",
+       y = "Inferior-Superior Dimension")
+plot
+
+```
+# Contrast - all Movement
+```{r}
+targetContrastPair <- speakerContrast_pair4
+speaker1 <- targetContrastPair %>%
+  dplyr::filter(row_number() == 1)
+speaker2 <- targetContrastPair %>%
+  dplyr::filter(row_number() == 2)
+
+# Acoustic Data
+acousticSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
+                                                            speaker1$onset,
+                                                            speaker1$offset) |
+                  DatabaseID == speaker2$DatabaseID & between(time,
+                                                            speaker2$onset,
+                                                            speaker2$offset))
+
+
+plot_acousticSegment <- acousticSegments %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(time = time - min(time)) %>%
+  ggplot() +
+  aes(x = time,
+      y = F2,
+      alpha = time) +
+  geom_path() +
+  geom_point() +
+  #scale_y_reverse() +
+  facet_wrap(~DatabaseID) +
+  theme_classic() +
+  theme(aspect.ratio = 1)
+plot_acousticSegment
+
+# Movement Data
+movementSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
+                                                            speaker1$onset,
+                                                            speaker1$offset) |
+                  DatabaseID == speaker2$DatabaseID & between(time,
+                                                            speaker2$onset,
+                                                            speaker2$offset)) %>%
+  dplyr::select(DatabaseID, time,
+                tb_x, tb_y,
+                tf_x, tf_y,
+                ul_x, ul_y,
+                ll_x, ll_y,
+                jaw_x, jaw_y)
+x <- movementSegments %>%
+  dplyr::select(DatabaseID, time, tb_x, tf_x, ul_x,ll_x, jaw_x) %>%
+  tidyr::pivot_longer(cols = tb_x:jaw_x,
+                      names_to = "Articulator",
+                      values_to = "x") %>%
+  dplyr::mutate(Articulator = gsub(pattern = "_x",
+                                   replacement = "",
+                                   x = Articulator))
+
+y <- movementSegments %>%
+  dplyr::select(DatabaseID, time, tb_y, tf_y, ul_y,ll_y, jaw_y) %>%
+  tidyr::pivot_longer(cols = tb_y:jaw_y,
+                      names_to = "Articulator",
+                      values_to = "y") %>%
+  dplyr::mutate(Articulator = gsub(pattern = "_y",
+                                   replacement = "",
+                                   x = Articulator))
+
+movementSegments <- base::merge(x, y)
+
+plot_movementSegments <- movementSegments %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(time = time - min(time)) %>%
+  ggplot() +
+  aes(x = x,
+      y = y,
+      color = Articulator,
+      alpha = time) +
+  geom_path() +
+  geom_point() +
+  facet_wrap(~DatabaseID) +
+  theme_classic() +
+  theme(aspect.ratio = 1) +
+  labs(x = "x",
+       y = "Inferior-Superior (y)")
+plot_movementSegments
+
+
+library(patchwork)
+plot_speakerContrast <- plot_acousticSegment +
+  plot_movementSegments +
+  plot_movementSegments_tf +
+  patchwork::plot_layout(ncol = 1)
+plot_speakerContrast
+```
+
+# aVSA vs. kVSA
+```{r}
+myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
+color_HC <- myPal[2] 
+color_PD <- myPal[6]
+
+speakers <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(DatabaseID:Sex)
+
+vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
+  dplyr::select(DatabaseID, Group, condition, label,
+                F1_tempMid, F2_tempMid,
+                TB_x_tempMid, TB_y_tempMid) %>%
+  base::merge(., speakers, no.dups = F) %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(TB_x_tempMid = scale(TB_x_tempMid, center = T, scale = F),
+                TB_y_tempMid = scale(TB_y_tempMid, center = T, scale = F)) %>%
+  dplyr::group_by(Group, Sex, condition, label) %>%
+  dplyr::summarise(F1_tempMid = mean(F1_tempMid, na.rm = T),
+                   F2_tempMid = mean(F2_tempMid, na.rm = T),
+                   TB_x_tempMid = mean(TB_x_tempMid, na.rm = T),
+                   TB_y_tempMid = mean(TB_y_tempMid, na.rm = T)) %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c(
+                               "M",
+                               "F"
+                             ),
+                             labels = c(
+                               "Male Speakers",
+                               "Female Speakers"
+                             )))
+variability_xyCoords <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
+  dplyr::select(DatabaseID, Group, condition, label,
+                F1_tempMid, F2_tempMid,
+                TB_x_tempMid, TB_y_tempMid) %>%
+  base::merge(., speakers, no.dups = F) %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(TB_x_tempMid = scale(TB_x_tempMid, center = T, scale = F),
+                TB_y_tempMid = scale(TB_y_tempMid, center = T, scale = F)) %>%
+  tidyr::pivot_longer(cols = F1_tempMid:TB_y_tempMid,
+                      names_to = "Dimension",
+                      values_to = "Value") %>%
+  dplyr::group_by(Group, Sex, condition, Dimension, label) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T)) %>%
+  dplyr::group_by(condition, Dimension) %>%
+  dplyr::mutate(CV = abs(SD / M * 100),
+                M_z = scale(M),
+                SD_z = scale(SD))
+
+coordVariability <- variability_xyCoords %>%
+  ggplot() +
+  aes(x = Dimension,
+      y = SD_z) +
+  geom_boxplot() +
+  facet_wrap(~Sex)
+coordVariability
+
+aVSA <- vsaMeasures %>%
+  dplyr::filter(condition == "conv") %>%
+  ggplot() +
+  aes(x = F2_tempMid,
+      y = F1_tempMid,
+      label = label,
+      color = Group,
+      linetype = Group,
+      fill = Group) +
+  geom_point() +
+  geom_polygon(fill = NA) +
+  geom_label(color = "white",
+             show.legend = FALSE) +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  facet_grid(~ Sex) +
+  theme_minimal() +
+  theme(aspect.ratio = 1) +
+  
+  # Labels
+  labs(x = "F2",
+       y = "F1",
+       title = "Acoustic VSA") +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+aVSA
+
+kVSA <- vsaMeasures %>%
+  dplyr::filter(condition == "conv") %>%
+  ggplot() +
+  aes(x = TB_x_tempMid,
+      y = TB_y_tempMid,
+      label = label,
+      color = Group,
+      linetype = Group,
+      fill = Group) +
+  geom_point() +
+  geom_polygon(
+    fill=NA) +
+  geom_label(color = "white",
+             show.legend = FALSE) +
+  scale_x_reverse() +
+  facet_grid(~ Sex) +
+  theme_minimal() +
+  theme(aspect.ratio = 1) +
+  
+  # Labels
+  labs(x = "Anterior-Posterior (x)",
+       y = "Inferior-Superior (y)",
+       title = "Kinematic VSA") +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+kVSA
+
+vsaComparisons <- aVSA + kVSA + 
+  plot_layout(guides = "collect",
+              ncol = 1)
+vsaComparisons
+
+ggsave(filename = "S1_vsaComparison.png",
+       path = "Data/Plots/Results/",
+       plot = vsaComparisons,
+       height = 3.5,
+       width = 3,
+       units = "in",
+       scale = 1.7)
+```
