@@ -416,8 +416,7 @@ Alpha will be evaluated at the bonferonni corrected level of 0.0055.
 alpha_s1 <- .05/5
 
 # Prepping the model folders to be saved
-dir.create(path = "Data/Models/",showWarnings = F)
-dir.create(path = "Data/Models/Study 1",showWarnings = F)
+dir.create(path = "Models/",showWarnings = F)
 ```
 
 ## Perceptual Measures

@@ -234,6 +234,231 @@ speakerList %>%
 
 ```
 
+## Table 5 - Reliability
+### Intra-Reliability
+```{r}
+# Loading the full data to obtain ranges for each measure.
+fullData_VSA <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+                dplyr::mutate(aVSA = aVSA / 1000) %>%
+                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+                tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value") %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData_ai <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+                dplyr::select(DatabaseID:token,
+                              acoDistance, kinDistance,
+                              F2_Slope, TB_speedMax) %>%
+  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
+                      names_to = "Measure",
+                      values_to = "Value")  %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData <- rbind(fullData_ai, fullData_VSA)
+rm(fullData_ai, fullData_VSA)
+
+# Diphthong
+reliability_ai <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+    dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
+  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
+                      names_to = "Measure",
+                      values_to = "intraRel") %>%
+  base::merge(.,
+              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+                dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
+  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
+                      names_to = "Measure",
+                      values_to = "Value"))
+
+
+# VSA
+
+reliability_vsa <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "intraRel") %>%
+  base::merge(.,
+              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+                dplyr::mutate(aVSA = aVSA / 1000) %>%
+                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+                tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value"))
+
+reliability <- rbind(reliability_ai %>%
+                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, intraRel),
+                     reliability_vsa %>%
+                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, intraRel))
+
+# Absolute error
+absError_ai <- reliability_ai %>%
+  dplyr::mutate(absError = abs(Value - intraRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+absError_vsa <- reliability_vsa %>%
+  dplyr::mutate(absError = abs(Value - intraRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+intra_absError <- rbind(absError_ai, absError_vsa) %>%
+  base::merge(fullData) %>%
+  dplyr::mutate(std_absError = M / range)
+
+stats::cor.test(x = reliability$Value,
+                y = reliability$intraRel,
+                method = "pearson")
+```
+### Inter-Reliability
+```{r}
+# Loading the full data to obtain ranges for each measure.
+fullData_VSA <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+                dplyr::mutate(aVSA = aVSA / 1000) %>%
+                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+                tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value") %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData_ai <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+                dplyr::select(DatabaseID:token,
+                              acoDistance, kinDistance,
+                              F2_Slope, TB_speedMax) %>%
+  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
+                      names_to = "Measure",
+                      values_to = "Value")  %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData <- rbind(fullData_ai, fullData_VSA)
+rm(fullData_ai, fullData_VSA)
+
+# Diphthong
+reliability_ai <- rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+    dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
+  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
+                      names_to = "Measure",
+                      values_to = "InterRel") %>%
+  base::merge(.,
+              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+                dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
+  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
+                      names_to = "Measure",
+                      values_to = "Value"))
+
+
+# VSA
+
+reliability_vsa <- rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "InterRel") %>%
+  base::merge(.,
+              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+                dplyr::mutate(aVSA = aVSA / 1000) %>%
+                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+                tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value"))
+
+reliability <- rbind(reliability_ai %>%
+                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, InterRel),
+                     reliability_vsa %>%
+                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, InterRel))
+
+# Absolute error
+absError_ai <- reliability_ai %>%
+  dplyr::mutate(absError = abs(Value - InterRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+absError_vsa <- reliability_vsa %>%
+  dplyr::mutate(absError = abs(Value - InterRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+inter_absError <- rbind(absError_ai, absError_vsa) %>%
+  base::merge(fullData) %>%
+  dplyr::mutate(std_absError = M / range)
+
+stats::cor.test(x = reliability$Value,
+                y = reliability$InterRel,
+                method = "pearson")
+```
+### Table
+```{r}
+tableData <- base::merge(
+  inter_absError %>%
+    dplyr::select(Measure,M,std_absError) %>%
+    dplyr::rename(inter_absError = M,
+                  inter_stdAbsError = std_absError),
+  intra_absError %>%
+    dplyr::select(Measure,M,std_absError) %>%
+    dplyr::rename(intra_absError = M,
+                  intra_stdAbsError = std_absError),
+) %>%
+  dplyr::mutate(Measure = factor(Measure,
+                                 levels = c(
+                                   "aVSA",
+                                   "acoDistance",
+                                   "F2_Slope",
+                                   "kVSA",
+                                   "kinDistance",
+                                   "TB_speedMax"
+                                 ),
+                                 labels = c(
+                                   "Acoustic VSA (kHz\U00B2)",
+                                   "Acoustic Distance (Hz)",
+                                   "F2 Slope (Hz/ms)",
+                                   "Kinematic VSA (mm\U00B2)",
+                                   "Kinematic Distance (mm)",
+                                   "Kinematic Speed (mm/s)"                                 
+                                 ))) %>%
+  arrange(Measure)
+
+reliabilityTable <- tableData %>%
+  gt::gt() %>%
+  gt::tab_spanner(columns = c("inter_absError",
+                              "inter_stdAbsError"),
+                  label = "Inter-measurer") %>%
+  gt::tab_spanner(columns = c("intra_absError",
+                              "intra_stdAbsError"),
+                  label = "Intra-measurer") %>%
+  gt::cols_label(
+    inter_absError = "MAE",
+    inter_stdAbsError = "Std. MAE",
+    intra_absError = "MAE",
+    intra_stdAbsError = "Std. MAE",
+  ) %>%
+  gt::fmt_number(
+    columns = inter_absError:intra_stdAbsError,
+    decimals = 2
+  ) %>%
+  gt::cols_align(
+    align = "right",
+    columns = "Measure"
+  )
+reliabilityTable
+
+gt::gtsave(data = reliabilityTable,
+           filename = "Tables/Table 5_Reliability.html")
+
+gt::gtsave(data = reliabilityTable,
+           filename = "Tables/Table 5_Reliability.docx")
+```
+
 ## Table 6 - Descriptives Table
 ```{r}
 # Perceptual Measures ----
@@ -731,4 +956,300 @@ variabilityMeasures %>%
   # Exporting the table
   gt::gtsave(filename = "Tables/Table 7_measurementVariability.html")
 
+```
+
+# Supplemental Info
+## Emmeans Tables
+```{r}
+models <- list.files(path = "Models/")
+alpha_s1 <- .05/5
+
+k <- 1
+while (k <= NROW(models)) {
+  targetModel <- readRDS(file = paste0("Models/",models[k]))
+  targetMeasure <- paste0(targetModel@call[["formula"]][[2]])
+  
+  # Compute EMMs for Group and Sex
+  emms_group <- emmeans(targetModel, ~ Group | Sex*condition)
+  emms_condition <- emmeans(targetModel, ~ condition | Sex*Group)
+
+  # Compare EMMs for Group and Sex
+  pairs(emms_group)
+  pairs(emms_condition)
+  
+  # Compare EMMs for Group and Sex
+  groupDiff <- summary(pairs(emms_group)) %>%
+    dplyr::rename(stat.value = 7) %>%
+      dplyr::mutate(
+        Measure = targetMeasure,
+        sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+        stat = ifelse(df == "Inf",
+                      paste0("z="),
+                      paste0("t(",round(df, digits = 2),")=")),
+        apa = paste0(Sex, ", ",
+                     condition, ", ",
+                     contrast, ": ",
+                     stat, round(stat.value, digits = 2), ", ",
+                   ifelse(p.value < .001, "p<.001", paste0("p=",round(p.value, digits = 3)))),
+      apa = gsub(pattern = "0[.]", replacement = ".", apa)) %>%
+    dplyr::relocate(Measure, .before = contrast)
+  
+  conditionDiff <- summary(pairs(emms_condition)) %>%
+    dplyr::rename(stat.value = 7) %>%
+    dplyr::mutate(
+      Measure = targetMeasure,
+      sig = ifelse(p.value < alpha_s1, TRUE, FALSE),
+      stat = ifelse(df == "Inf",
+                    paste0("z="),
+                    paste0("t(",round(df, digits = 2),")=")),
+      apa = paste0(Sex, ", ",
+                   Group, ", ",
+                   contrast, ": ",
+                   stat, round(stat.value, digits = 2), ", ",
+                   ifelse(p.value < .001, "p<.001", paste0("p=",round(p.value, digits = 3)))),
+      apa = gsub(pattern = "0[.]", replacement = ".", apa)) %>%
+    dplyr::relocate(Measure, .before = contrast)
+  
+  if (k == 1) {
+    table_groupDiff <- groupDiff
+    table_conditionDiff <- conditionDiff
+  } else {
+    table_groupDiff <- rbind(table_groupDiff, groupDiff)
+    table_conditionDiff <- rbind(table_conditionDiff, conditionDiff)
+  }
+  
+  k <- k + 1
+  rm(groupDiff, conditionDiff, targetMeasure, targetModel)
+}
+
+table_groupDiff <- table_groupDiff %>%
+  dplyr::mutate(apa_parentheses = gsub(apa, pattern = "(", replacement = "[", fixed=TRUE),
+                apa_parentheses = gsub(apa_parentheses,pattern = ")", replacement = "]", fixed=TRUE))
+
+table_conditionDiff <- table_conditionDiff %>%
+  dplyr::mutate(apa_parentheses = gsub(apa, pattern = "(", replacement = "[", fixed=TRUE),
+                apa_parentheses = gsub(apa_parentheses,pattern = ")", replacement = "]", fixed=TRUE))
+```
+
+## Table S1 - Group Contrasts
+```{r}
+table_groupDiff %>%
+  dplyr::select(Measure:condition, estimate, SE, stat.value, df, p.value, sig) %>%
+  dplyr::select(!contrast) %>%
+  dplyr::mutate(p.value = ifelse(p.value < .001,"<.001", round(p.value, digits = 3)),
+                p.value = gsub(p.value, pattern = "0[.]", replacement = ".")) %>%
+  tidyr::pivot_wider(
+    names_from = Sex,
+    values_from = c(estimate, SE, stat.value, p.value,df, sig)
+  ) %>%
+  dplyr::mutate(
+    condition = factor(condition,
+                       levels = c(
+                         "conv",
+                         "lessClear",
+                         "moreClear"
+                       ),
+                       labels = c(
+                         "Conversational",
+                         "Less Clear",
+                         "More Clear"
+                       )),
+    Measure = factor(Measure,
+                     levels = c(
+                       "Int",
+                       "AP",
+                       "aVSA",
+                       "acoDistance",
+                       "F2_Slope",
+                       "kVSA",
+                       "kinDistance",
+                       "TB_speedMax"
+                     ),
+                     labels = c(
+                       "Intelligibility (%)",
+                       "Articulatory Precision (%)",
+                       "Acoustic VSA (Hz^2)",
+                       "Acoustic Distance (Hz)",
+                       "F2 Slope (Hz/ms)",
+                       "Kinematic VSA (mm^2)",
+                       "Kinematic Distance (mm)",
+                       "Kinematic Speed (mm/s)"
+                     ))) %>%
+  arrange(Measure) %>%
+  gt::gt(
+    rowname_col = "condition",
+    groupname_col = "Measure") %>%
+  
+  # Female Speakers Spanner
+  gt::tab_spanner(
+    label = "Female Speakers",
+    columns = c(estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F)
+  ) %>%
+  
+  # Male Speakers Spanner
+  gt::tab_spanner(
+    label = "Male Speakers",
+    columns = c(estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M)
+  ) %>%
+  gt::fmt_number(
+    columns = everything(),
+    decimals = 2
+  ) %>%
+  gt::fmt_number(
+    columns = c(p.value_M, p.value_F),
+    decimals = 3,
+  ) %>%
+  gt::cols_align(align = "right",
+                 columns = c(p.value_M, p.value_F)) %>%
+ 
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M),
+              rows = sig_M == TRUE)) %>%
+  
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F),
+              rows = sig_F == TRUE)) %>%
+  
+  # Rename Columns
+  gt::cols_label(
+    estimate_M = "Est",
+    SE_M = "SE",
+    stat.value_M = "t",
+    df_F = "df",
+    p.value_M = "p",
+    estimate_F = "Est",
+    SE_F = "SE",
+    stat.value_F = "t",
+    df_M = "df",
+    p.value_F = "p"
+  ) %>%
+  gt::cols_hide(columns = c(sig_M,sig_F)) %>%
+  gt::tab_options(row_group.as_column = TRUE)  %>%
+  gt::gtsave(filename = "Tables/Table S1_Group Contrasts.html")
+```
+
+### Condition Contrasts
+```{r}
+table_conditionDiff %>%
+  dplyr::select(Measure:Group, estimate, SE, stat.value, df, p.value, sig) %>%
+  dplyr::mutate(p.value = ifelse(p.value < .001,"<.001", round(p.value, digits = 3)),
+                p.value = gsub(p.value, pattern = "0[.]", replacement = ".")) %>%
+  tidyr::pivot_wider(
+    names_from = Sex,
+    values_from = c(estimate, SE, stat.value, p.value,df, sig)
+  ) %>%
+  dplyr::mutate(
+    Measure = factor(Measure,
+                     levels = c(
+                       "Int",
+                       "AP",
+                       "aVSA",
+                       "acoDistance",
+                       "F2_Slope",
+                       "kVSA",
+                       "kinDistance",
+                       "TB_speedMax"
+                     ),
+                     labels = c(
+                       "Intelligibility (%)",
+                       "Articulatory Precision (%)",
+                       "Acoustic VSA (Hz^2)",
+                       "Acoustic Distance (Hz)",
+                       "F2 Slope (Hz/ms)",
+                       "Kinematic VSA (mm^2)",
+                       "Kinematic Distance (mm)",
+                       "TB Speed (mm/s)"
+                     ))) %>%
+  arrange(Measure) %>%
+  gt::gt(
+    rowname_col = "contrast",
+    groupname_col = c("Measure")) %>%
+  
+  # Female Speakers Spanner
+  gt::tab_spanner(
+    label = "Female Speakers",
+    columns = c(estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F)
+  ) %>%
+  
+  # Male Speakers Spanner
+  gt::tab_spanner(
+    label = "Male Speakers",
+    columns = c(estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M)
+  ) %>%
+  gt::fmt_number(
+    columns = everything(),
+    decimals = 2
+  ) %>%
+  gt::fmt_number(
+    columns = c(p.value_M, p.value_F),
+    decimals = 3,
+  ) %>%
+  gt::cols_align(align = "right",
+                 columns = c(p.value_M, p.value_F)) %>%
+ 
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_M,
+              SE_M,
+              stat.value_M,
+              df_M,
+              p.value_M),
+              rows = sig_M == TRUE)) %>%
+  
+  # Conditionally bold M rows
+  gt::tab_style(style = list(gt::cell_text(weight = 'bold')), 
+            locations = gt::cells_body(columns = c(
+              estimate_F,
+              SE_F,
+              stat.value_F,
+              df_F,
+              p.value_F),
+              rows = sig_F == TRUE)) %>%
+  
+  # Rename Columns
+  gt::cols_label(
+    estimate_M = "Est",
+    SE_M = "SE",
+    stat.value_M = "F/Z Ratio",
+    df_F = "df",
+    p.value_M = "p",
+    estimate_F = "Est",
+    SE_F = "SE",
+    stat.value_F = "F/Z Ratio",
+    df_M = "df",
+    p.value_F = "p"
+  ) %>%
+  gt::cols_hide(columns = c(sig_M,sig_F)) %>%
+  gt::tab_options(row_group.as_column = TRUE) %>%
+  gt::gtsave(filename = "Data/Tables/Supplemental Info_Condition Contrasts.html")
+  
 ```
