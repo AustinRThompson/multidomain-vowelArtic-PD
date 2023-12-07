@@ -1,0 +1,512 @@
+M_PD_moreClear = "M",
+SD_PD_moreClear = "SD"
+) %>%
+# Align the measure labels to the right
+gt::cols_align(
+align = c("right"),
+columns = Measure
+) %>%
+gt::tab_options(row_group.as_column = FALSE)
+# Save as HTML
+gt::gtsave(
+data = descriptivesTable,
+filename = "Data/Tables/descriptivesTable.html"
+)
+# Save as .docx
+gt::gtsave(
+data = descriptivesTable,
+filename = "Data/Tables/descriptivesTable.docx"
+)
+apa_lmResults <- function(model, fixedEffect) {
+coefficients <- summary(model)[["coefficients"]] %>%
+as.data.frame() %>%
+dplyr::rename(
+stdError = `Std. Error`,
+t = `t value`,
+p = `Pr(>|t|)`) %>%
+dplyr::mutate(
+Estimate = round(Estimate, digits = 2),
+#df = round(df, digits = 2),
+t = round(t, digits = 2),
+p = round(p, digits = 3),
+) %>%
+dplyr::filter(rownames(.) == fixedEffect)
+if(coefficients$p < .001) {
+p <- "p<.001"
+} else {
+p <- paste0("p=",as.numeric(coefficients$p))
+}
+df <- as.numeric(model$df.residual)
+t <- paste0("t(",df,")=", as.numeric(coefficients$t))
+CI_intervals <- stats::confint(model) %>%
+as.data.frame() %>%
+dplyr::mutate(
+ll = round(`2.5 %`, digits = 2),
+ul = round(`97.5 %`, digits = 2),
+) %>%
+dplyr::select(ll, ul) %>%
+dplyr::filter(rownames(.) == fixedEffect)
+CI <- base::paste0("95% CI [",
+as.numeric(CI_intervals$ll),
+", ",
+as.numeric(CI_intervals$ul),
+"]")
+formula <- paste(t, p, CI, sep = ", ")
+return(formula)
+rm(coefficients, t, p, CI_intervals, CI)
+}
+apa_lmeResults <- function(model, fixedEffect) {
+coefficients <- summary(model)[["coefficients"]] %>%
+as.data.frame() %>%
+dplyr::rename(
+stdError = `Std. Error`,
+t = `t value`,
+p = `Pr(>|t|)`) %>%
+dplyr::mutate(
+Estimate = round(Estimate, digits = 2),
+df = round(df, digits = 2),
+t = round(t, digits = 2),
+p = round(p, digits = 3),
+) %>%
+dplyr::filter(rownames(.) == fixedEffect)
+if(coefficients$p < .001) {
+p <- "p<.001"
+} else {
+p <- paste0("p=",as.numeric(coefficients$p))
+}
+t <- paste0("t(",as.numeric(coefficients$df),")=", as.numeric(coefficients$t))
+CI_intervals <- stats::confint(model) %>%
+as.data.frame() %>%
+dplyr::mutate(
+ll = round(`2.5 %`, digits = 2),
+ul = round(`97.5 %`, digits = 2),
+) %>%
+dplyr::select(ll, ul) %>%
+dplyr::filter(rownames(.) == fixedEffect)
+CI <- base::paste0("95% CI [",
+as.numeric(CI_intervals$ll),
+", ",
+as.numeric(CI_intervals$ul),
+"]")
+formula <- paste(t, p, CI, sep = ", ")
+return(formula)
+rm(coefficients, t, p, CI_intervals, CI)
+}
+apa_levelDescriptives <- function(data,level, outcome) {
+descriptiveData <- modelData %>%
+dplyr::select(Group, Sex, sym(outcome)) %>%
+dplyr::rename(outcome = 3)
+group <- descriptiveData %>%
+dplyr::group_by(Group) %>%
+dplyr::summarize(M = mean(outcome, na.rm = T),
+SD = sd(outcome, na.rm = T),
+.groups = 'drop') %>%
+dplyr::mutate(M = round(M, digits = 2),
+SD = round(SD, digits = 2)) %>%
+dplyr::rename(Grouping = 1) %>%
+as.data.frame()
+sex <- descriptiveData %>%
+dplyr::group_by(Sex) %>%
+dplyr::summarize(M = mean(outcome, na.rm = T),
+SD = sd(outcome, na.rm = T),
+.groups = 'drop') %>%
+dplyr::mutate(M = round(M, digits = 2),
+SD = round(SD, digits = 2)) %>%
+dplyr::rename(Grouping = 1) %>%
+as.data.frame()
+groupSex <- descriptiveData %>%
+dplyr::group_by(Group, Sex) %>%
+dplyr::summarize(M = mean(outcome, na.rm = T),
+SD = sd(outcome, na.rm = T),
+.groups = 'drop') %>%
+dplyr::ungroup() %>%
+dplyr::mutate(M = round(M, digits = 2),
+SD = round(SD, digits = 2),
+Grouping = paste(Group, Sex, sep = "_")) %>%
+dplyr::select(Grouping, M, SD) %>%
+as.data.frame()
+descriptives <- rbind(group,
+sex,
+groupSex) %>%
+dplyr::filter(Grouping == level)
+output <- paste0(level,": (M=",descriptives$M,", SD=",descriptives$SD,")")
+return(output)
+rm(descriptives, group, sex, groupSex)
+}
+apa_emmsPairs <- function(emmsPair, sex, Condition) {
+summary_table <- summary(emmsPair, infer = TRUE) %>%
+dplyr::filter(Sex == sex) %>%
+dplyr::filter(condition == condition)
+if(summary_table$p.value < .001) {
+p <- "p < .001"
+} else {
+p <- paste0("p=",
+round(summary_table$p.value, digits = 3))
+}
+if("t.ratio" %in% colnames(summary_table)) {
+output <- paste(
+sex,
+", HC - PD: (",
+"t(",
+round(summary_table$df, digits = 2),
+")=",
+as.numeric(round(summary_table$t.ratio, 2)),
+", ",
+p,
+")",
+sep = "")
+}
+if("z.ratio" %in% colnames(summary_table)) {
+output <- paste(
+sex,
+", HC - PD: (",
+"z = (",
+as.numeric(round(summary_table$z.ratio, 2)),
+", ",
+p,
+")",
+sep = "")
+}
+return(output)
+}
+apa_s1_emmPairs <- function(emmsPair, sex, Condition) {
+summary_table <- summary(emmsPair, infer = TRUE) %>%
+dplyr::filter(Sex == sex) %>%
+dplyr::filter(condition == Condition)
+if(summary_table$p.value < .001) {
+p <- "p<.001"
+} else {
+p <- paste0("p=",
+round(summary_table$p.value, digits = 3))
+}
+if("t.ratio" %in% colnames(summary_table)) {
+output <- paste(
+sex,
+", HC - PD: (",
+"t(",
+round(summary_table$df, digits = 2),
+")=",
+as.numeric(round(summary_table$t.ratio, 2)),
+", ",
+p,
+")",
+sep = "")
+}
+if("z.ratio" %in% colnames(summary_table)) {
+output <- paste(
+sex,
+", HC - PD: (",
+"z=",
+as.numeric(round(summary_table$z.ratio, 2)),
+", ",
+p,
+")",
+sep = "")
+}
+return(output)
+}
+apa_s2_emmPairs <- function(emmsPair, Sex_Input, Group_Input, Contrast_Input) {
+summary_table <- summary(emmsPair, infer = TRUE) %>%
+dplyr::filter(Sex == Sex_Input) %>%
+dplyr::filter(Group == Group_Input) %>%
+dplyr::filter(contrast == Contrast_Input)
+if(summary_table$p.value < .001) {
+p <- "p<.001"
+} else {
+p <- paste0("p=",
+round(summary_table$p.value, digits = 3))
+}
+if("t.ratio" %in% colnames(summary_table)) {
+output <- paste(
+Sex_Input,
+", ",
+Group_Input,
+", ",
+Contrast_Input,
+": (",
+"t(",
+round(summary_table$df, digits = 2),
+")=",
+as.numeric(round(summary_table$t.ratio, 2)),
+", ",
+p,
+")",
+sep = "")
+}
+if("z.ratio" %in% colnames(summary_table)) {
+output <- paste(
+Sex_Input,
+", ",
+Group_Input,
+", ",
+Contrast_Input,
+": (",
+"z=",
+as.numeric(round(summary_table$z.ratio, 2)),
+", ",
+p,
+")",
+sep = "")
+}
+return(output)
+}
+alpha_s1 <- .05/8
+# Prepping the model folders to be saved
+dir.create(path = "Data/Models/",showWarnings = F)
+dir.create(path = "Data/Models/Study 1",showWarnings = F)
+perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+dplyr::select(!V1) %>%
+dplyr::filter(ratingType == "Int") %>%
+dplyr::rename(Int = Rating) %>%
+dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+condition = factor(condition,
+levels = c("conv",
+"moreClear",
+"lessClear")))
+modelData <- perceptualMeasures
+View(modelData)
+vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+#dplyr::filter(condition == "conv") %>%
+dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+condition = factor(condition,
+levels = c("conv",
+"moreClear",
+"lessClear")),
+aVSA = aVSA/1000)
+modelData <- vsaMeasures
+modelData <- vsaMeasures %>%
+dplyr::group_by(Sex) %>%
+dplyr::mutate(aVSA_z = scale(aVSA))
+# Building the model
+aVSA_m0 <- lmerTest::lmer(aVSA_z ~ 1 +
+(1 | StudyID),
+data = modelData)
+# Model summary
+summary(aVSA_m0)
+# Building the model
+aVSA_m1 <- lmerTest::lmer(aVSA_z ~ condition +
+(1 | StudyID),
+data = modelData)
+# Model summary
+summary(aVSA_m1)
+# Building the model
+aVSA_m2 <- lmerTest::lmer(aVSA_z ~ condition*Group +
+(1 | StudyID),
+data = modelData)
+# Model summary
+summary(aVSA_m2)
+cornerDispMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv")
+View(cornerDispMeasures)
+# EuclideanDistance ----
+eucDist <- function(x1, y1, x2, y2) {
+df <- data.frame(x1, y1, x2, y2) %>%
+dplyr::mutate(EucDist = sqrt((x2 - x1)^2 + (y2 - y1)^2)) %>%
+dplyr::pull(EucDist)
+return(df)
+}
+bark <- function (x) {
+# The main function
+bark <- 26.81 * x/(1960 + x) - 0.53
+# The adjustment for very low or very high measurements
+bark[bark < 2 & !is.na(bark)] <- bark[bark < 2 & !is.na(bark)] + 0.15 * (2 - bark[bark < 2 & !is.na(bark)])
+bark[bark > 20.1 & !is.na(bark)] <- bark[bark > 20.1 & !is.na(bark)] + 0.22 * (bark[bark > 20.1 & !is.na(bark)] - 20.1)
+return(bark)
+}
+acoustic_VD <- rio::import(
+file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv")
+# Calculating the centroid values for each speakers
+## Per Karlsson & Doorn, 2012, the F1  centroid is calculated simply as the mean F1 value among all vowel tokens
+F1 <- acoustic_VD %>%
+dplyr::group_by(ID) %>%
+dplyr::summarise(cF1 = mean(F1, na.rm = T))
+View(acoustic_VD)
+acoustic_VD <- rio::import(
+file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv")
+# Calculating the centroid values for each speakers
+## Per Karlsson & Doorn, 2012, the F1  centroid is calculated simply as the mean F1 value among all vowel tokens
+F1 <- acoustic_VD %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF1 = mean(F1, na.rm = T))
+# Calculating the centroid values for each speakers
+## Per Karlsson & Doorn, 2012, the F1  centroid is calculated simply as the mean F1 value among all vowel tokens
+F1 <- acoustic_VD %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF1 = mean(F1_tempMid, na.rm = T))
+View(F1)
+## F2 is calculated as the weighted midpoint of only the vowels with F1 values below the cF1 (F1 centroid point) - However, like Carl et al., 2020, we calculated the means before calculating the mean F2 centroid to avoid skewing due to a large number of tokens.
+centroid <- base::merge(acousticMidpoints, F1) %>%
+dplyr::filter(F1 < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2_tempMid, na.rm = T)) %>%
+base::merge(., F1) %>%
+dplyr::relocate(cF2, .after = cF1)
+## F2 is calculated as the weighted midpoint of only the vowels with F1 values below the cF1 (F1 centroid point) - However, like Carl et al., 2020, we calculated the means before calculating the mean F2 centroid to avoid skewing due to a large number of tokens.
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1 < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2_tempMid, na.rm = T)) %>%
+base::merge(., F1) %>%
+dplyr::relocate(cF2, .after = cF1)
+## F2 is calculated as the weighted midpoint of only the vowels with F1 values below the cF1 (F1 centroid point) - However, like Carl et al., 2020, we calculated the means before calculating the mean F2 centroid to avoid skewing due to a large number of tokens.
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2_tempMid, na.rm = T)) %>%
+base::merge(., F1) %>%
+dplyr::relocate(cF2, .after = cF1)
+## F2 is calculated as the weighted midpoint of only the vowels with F1 values below the cF1 (F1 centroid point) - However, like Carl et al., 2020, we calculated the means before calculating the mean F2 centroid to avoid skewing due to a large number of tokens.
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2_tempMid, na.rm = T)) %>%
+base::merge(., F1) %>%
+dplyr::relocate(cF2, .after = cF1)
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T))
+View(centroid)
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2_tempMid, na.rm = T))
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2_tempMid, na.rm = T))
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T))
+## F2 is calculated as the weighted midpoint of only the vowels with F1 values below the cF1 (F1 centroid point) - However, like Carl et al., 2020, we calculated the means before calculating the mean F2 centroid to avoid skewing due to a large number of tokens.
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2, na.rm = T)) %>%
+base::merge(., F1) %>%
+dplyr::relocate(cF2, .after = cF1)
+## F2 is calculated as the weighted midpoint of only the vowels with F1 values below the cF1 (F1 centroid point) - However, like Carl et al., 2020, we calculated the means before calculating the mean F2 centroid to avoid skewing due to a large number of tokens.
+centroid <- base::merge(acoustic_VD, F1) %>%
+dplyr::filter(F1_tempMid < cF1) %>%
+dplyr::group_by(DatabaseID, label) %>%
+dplyr::summarise(F2 = mean(F2_tempMid, na.rm = T)) %>%
+dplyr::group_by(DatabaseID) %>%
+dplyr::summarise(cF2 = mean(F2, na.rm = T)) %>%
+base::merge(., F1) %>%
+dplyr::relocate(cF2, .after = cF1)
+acoustic_VD <- acoustic_VD %>%
+base::merge(., centroid)
+rio::export(
+x = acoustic_VD,
+file = "Data/PreppedData/CollatedData/targetMeasures_aVD.csv"
+)
+acoustic_VD <- acoustic_VD %>%
+dplyr::mutate(
+acoVD = eucDist(
+x1 = F2_tempMid,
+y1 = F1_tempMid,
+x2 = cF2,
+y2 = cF1),
+acoVD_b = eucDist(
+x1 = bark(F2*1000),
+y1 = bark(F1*1000),
+x2 = bark(cF2*1000),
+y2 = bark(cF1*1000)
+))
+acoustic_VD <- acoustic_VD %>%
+dplyr::mutate(
+acoVD = eucDist(
+x1 = F2_tempMid,
+y1 = F1_tempMid,
+x2 = cF2,
+y2 = cF1))
+View(acoustic_VD)
+modelData <- acoustic_VD %>%
+dplyr::group_by(Sex) %>%
+dplyr::mutate(acoVD_z = scale(acoVD))
+View(speakerList)
+modelData <- acoustic_VD %>%
+base::merge(., speakerList %>%
+dplyr::select(DatabaseID, Sex))
+modelData <- acoustic_VD %>%
+base::merge(., speakerList %>%
+dplyr::select(DatabaseID, Sex)) %>%
+dplyr::group_by(Sex) %>%
+dplyr::mutate(acoVD_z = scale(acoVD))
+View(modelData)
+# Building the model
+acoVD_m0 <- lmerTest::lmer(acoVD_z ~ 1 +
+(1 | StudyID),
+data = modelData)
+modelData <- acoustic_VD %>%
+base::merge(., speakerList %>%
+dplyr::select(DatabaseID, StudyID, Sex)) %>%
+dplyr::group_by(Sex) %>%
+dplyr::mutate(acoVD_z = scale(acoVD))
+# Building the model
+acoVD_m0 <- lmerTest::lmer(acoVD_z ~ 1 +
+(1 | StudyID),
+data = modelData)
+# Model summary
+summary(acoVD_m0)
+# Building the model
+acoVD_m1 <- lmerTest::lmer(acoVD_z ~ condition +
+(1 | StudyID) +
+(1 | label),
+data = modelData)
+# Model summary
+summary(acoVD_m1)
+# Building the model
+acoVD_m2 <- lmerTest::lmer(acoVD_z ~ condition*Group +
+(1 | StudyID) +
+(1 | label),
+data = modelData)
+# Model summary
+summary(acoVD_m2)
+# Building the model
+acoVD_m2 <- lmerTest::lmer(acoVD ~ condition*Group +
+(1 | StudyID) +
+(1 | label),
+data = modelData)
+# Model summary
+summary(acoVD_m2)
+# Building the model
+acoVD_m2 <- lmerTest::lmer(acoVD ~ condition*Group*Sex +
+(1 | StudyID) +
+(1 | label),
+data = modelData)
+# Model summary
+summary(acoVD_m2)
+# Model summary
+summary(acoVD_m2)
+# Building the model
+acoVD_m2 <- lmerTest::lmer(acoVDz_z ~ condition*Group +
+(1 | StudyID) +
+(1 | label),
+data = modelData)
+# Building the model
+acoVD_m2 <- lmerTest::lmer(acoVD_z ~ condition*Group +
+(1 | StudyID) +
+(1 | label),
+data = modelData)
+# Building the model
+acoVD_m2 <- lmerTest::lmer(acoVD_z ~ condition*Group +
+(1 | StudyID) +
+(1 | label),
+data = modelData)
+# Model summary
+summary(acoVD_m2)
