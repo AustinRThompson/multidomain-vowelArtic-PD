@@ -53,9 +53,9 @@ rsconnect/
 **/.xlsx
 .Rproj.user
 
-**/RawData/
-**/PreppedData/Acoustic Segments
-**/PreppedData/AcousticMeasures.csv
-**/PreppedData/Movement Segments
-**/PreppedData/Speaker Data
+Data/RawData/
+Data/PreppedData/Acoustic Segments
+Data/PreppedData/AcousticMeasures.csv
+Data/PreppedData/Movement Segments
+Data/PreppedData/Speaker Data
 
