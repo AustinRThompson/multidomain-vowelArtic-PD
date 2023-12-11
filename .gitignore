@@ -49,9 +49,8 @@ po/*~
 rsconnect/
 
 **/.DS_Store
-**/.wav
-**/.xlsx
-.Rproj.user
+.wav
+.xlsx
 
 Data/RawData/
 Data/PreppedData/Acoustic Segments
