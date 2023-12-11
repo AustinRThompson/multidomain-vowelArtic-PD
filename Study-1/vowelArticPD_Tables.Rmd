@@ -7,6 +7,7 @@ This script generates the tables for Study 1 (A multidimensional examination of 
 # Packages
 ```{r}
 library(tidyverse)
+library(webshot2) # install.packages('webshot2')
 
 # Making sure there is a Tables folder
 dir.create(path = "Study-1/Tables", showWarnings = F)
@@ -14,7 +15,18 @@ dir.create(path = "Study-1/Tables", showWarnings = F)
 
 # Loading the Data
 ```{r}
-speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
+fileInventories <- rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
+  dplyr::rename(DatabaseID = `Sub #`,
+                dxTime = `Time Since Diagnosis`) %>%
+  dplyr::select(DatabaseID, dxTime, MoCA)
+
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::filter(ratingType == "Int") %>%
+  dplyr::filter(condition == "conv") %>%
+  dplyr::group_by(DatabaseID, StudyID) %>%
+  dplyr::summarise(Rating_M = mean(Rating, na.rm = T))
+
+speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
   dplyr::select(!`Folder 2`:`Sentence Repetition`) %>%
   base::merge(., fileInventories) %>%
   base::merge(., listenerRatings) %>%
@@ -47,7 +59,7 @@ speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
   dplyr::select(!MoCA)
 ```
 
-## Table 1 - HC Speaker Demo
+## Table S1 - HC Speaker Demo
 ```{r}
 # HC Speakers ----
 speakerList %>%
@@ -61,7 +73,8 @@ speakerList %>%
   
   # Title
   gt::tab_header(
-      title = "Speaker Demographics"
+      title = "Table S1",
+      subtitle = "Speaker demographics for the neurologically healthy control (HC) speaker group."
       ) %>%
   
   # Replace missing values with blanks
@@ -134,17 +147,22 @@ speakerList %>%
   ) %>%
   
   # Format groups
-  gt::tab_options(row_group.as_column = FALSE) %>%
+  gt::tab_options(row_group.as_column = FALSE,
+                  table.font.size = 13,
+                  data_row.padding = 0) %>%
+  
+  gt::cols_align(align = c("center"),
+                 columns = StudyID:Severity) %>%
   
   # Hiding time since diagnosis and severity
   gt::cols_hide(columns = c(dxTime,Severity)) %>%
   
   # Saving the table
-  gt::gtsave(filename = "Table 1_SpeakerDemo_HC.html",
-             path = "Study-1/Tables")
+  gt::gtsave(filename = "Table S1_SpeakerDemo_HC.pdf",
+             path = "../Supplemental Information")
 ```
 
-## Table 2 - PD Speaker Demo
+## Table S2 - PD Speaker Demo
 ```{r}
 # PD Speakers ----
 speakerList %>%
@@ -158,7 +176,8 @@ speakerList %>%
   
   # Title
   gt::tab_header(
-      title = "Speaker Demographics"
+      title = "Table S2",
+      subtitle = "Speaker demographics for the Parkinson’s (PD) speaker group."
       ) %>%
   
   # Replace missing values with blanks
@@ -226,11 +245,16 @@ speakerList %>%
   ) %>%
   
   # Format groups
-  gt::tab_options(row_group.as_column = FALSE) %>%
+  gt::tab_options(row_group.as_column = FALSE,
+                  table.font.size = 13,
+                  data_row.padding = 0) %>%
+  
+  gt::cols_align(align = c("center"),
+                 columns = StudyID:Severity) %>%
   
   # Saving the table
-  gt::gtsave(filename = "Table 2_SpeakerDemo_PD.html",
-             path = "Study-1/Tables")
+  gt::gtsave(filename = "Table S2_SpeakerDemo_PD.pdf",
+             path = "../Supplemental Information")
 
 ```
 
@@ -459,10 +483,10 @@ gt::gtsave(data = reliabilityTable,
            filename = "Tables/Table 5_Reliability.docx")
 ```
 
-## Table 6 - Descriptives Table
+## Table S3 - Descriptives Table
 ```{r}
 # Perceptual Measures ----
-perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+perceptualMeasures <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!1) %>%
   
   # Selecting only the data we need
@@ -517,7 +541,7 @@ perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/Listener
   
 
 # VSA Measures ----
-vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
     
     # Converting aVSA from Hz to kHz, to make table cleaner
     dplyr::mutate(aVSA = aVSA / 1000) %>%
@@ -576,7 +600,7 @@ vsaMeasures <- base::rbind(
     vsaMeasures_bySex)
 
 # /ai/ Measures ----
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
   
   # Selecting only the data we need
   dplyr::select(
@@ -658,15 +682,15 @@ descriptivesData <- base::rbind(
         "F2_Slope",
         "kVSA",
         "kinDistance",
-        "TB_speedMax",
+        "TB_speedMax"
        ),
        labels = c(
          "Intelligibility (VAS)",
          "Articulatory Precision (VAS)",
-         "Acoustic VSA (kHz^2)",
+         "Acoustic VSA (kHz\U00B2)",
          "Acoustic Distance (Hz)",
          "F2 Slope (Hz/ms)",
-         "Kinematic VSA (mm^2)",
+         "Kinematic VSA (mm\U00B2)",
          "Kinematic Distance (mm)",
          "Kinematic Speed (mm/s)"
          )),
@@ -692,6 +716,13 @@ descriptivesData <- base::rbind(
     gt::gt(
       rowname_col = "Measure",
       groupname_col = "Sex") %>%
+    # Title
+    gt::tab_header(
+      title = "Table S3",
+      subtitle = "The target measures across the speaking conditions, presented for male, female, and all speakers."
+      ) %>%
+    
+    
   # Spanner 1: PD Speakers
   gt::tab_spanner(
     label = "PD",
@@ -755,23 +786,25 @@ descriptivesData <- base::rbind(
     SD_PD_moreClear = "SD"
   ) %>%
     
-    # Align the measure labels to the right
+  # Align the measure labels to the right
     gt::cols_align(
       align = c("right"),
       columns = Measure
       ) %>%
-  gt::tab_options(row_group.as_column = FALSE)
   
-  # Save as HTML
+    # Format groups
+  gt::tab_options(row_group.as_column = FALSE,
+                  table.font.size = 10,
+                  column_labels.padding = 0,
+                  data_row.padding = 5,
+                  page.orientation = "landscape",
+                  page.width = "11in",
+                  page.height = "8.5in")
+  
+  # Save as .pdf
   gt::gtsave(
     data = descriptivesTable,
-    filename = "Data/Tables/descriptivesTable.html"
-    )
-  
-  # Save as .docx
-  gt::gtsave(
-    data = descriptivesTable,
-    filename = "Study-1/Tables/Table 3_descriptivesTable.html"
+    filename = "../Supplemental Information/Table S3_descriptivesTable.pdf"
     )
 
     
