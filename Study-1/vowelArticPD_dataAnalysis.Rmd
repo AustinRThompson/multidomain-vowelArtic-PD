@@ -503,7 +503,7 @@ summary(Int_finalModel)
 # Saving the model
 base::saveRDS(
   object = Int_finalModel,
-  file = "Study-1/Models/Int_finalModel.rds")
+  file = "Models/Int_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^Int_m"))
@@ -596,7 +596,7 @@ summary(AP_finalModel)
 # Saving the model
 base::saveRDS(
   object = AP_finalModel,
-  file = "Study-1/Models/AP_finalModel.rds")
+  file = "Models/AP_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^AP_m"))
@@ -682,7 +682,7 @@ summary(aVSA_finalModel)
 # Saving the model
 base::saveRDS(
   object = aVSA_finalModel,
-  file = "Study-1/Models/aVSA_finalModel.rds")
+  file = "Models/aVSA_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^aVSA_m"))
@@ -763,7 +763,7 @@ summary(acoDistance_finalModel)
 # Saving the model
 base::saveRDS(
   object = acoDistance_finalModel,
-  file = "Study-1/Models/acoDistance_finalModel.rds")
+  file = "Models/acoDistance_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^acoDistance_m"))
@@ -844,7 +844,7 @@ summary(F2_Slope_finalModel)
 # Saving the model
 base::saveRDS(
   object = F2_Slope_finalModel,
-  file = "Study-1/Models/F2_Slope_finalModel.rds")
+  file = "Models/F2_Slope_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^F2_Slope_m"))
@@ -925,7 +925,7 @@ summary(kVSA_finalModel)
 # Saving the model
 base::saveRDS(
   object = kVSA_finalModel,
-  file = "Study-1/Models/kVSA_finalModel.rds")
+  file = "Models/kVSA_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^kVSA_m"))
@@ -1008,7 +1008,7 @@ summary(kinDistance_finalModel)
 # Saving the model
 base::saveRDS(
   object = kinDistance_finalModel,
-  file = "Study-1/Models/kinDistance_finalModel.rds")
+  file = "Models/kinDistance_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^kinDistance_m"))
@@ -1089,7 +1089,7 @@ summary(TB_speedMax_finalModel)
 # Saving the model
 base::saveRDS(
   object = TB_speedMax_finalModel,
-  file = "Study-1/Models/TB_speedMax_finalModel.rds")
+  file = "Models/TB_speedMax_finalModel.rds")
 
 # Taking out the trash
 rm(list=ls(pattern="^dTB_speedMax_m"))

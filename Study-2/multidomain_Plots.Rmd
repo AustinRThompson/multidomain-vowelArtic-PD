@@ -1,0 +1,598 @@
+---
+title: "Study 2: Plots"
+---
+
+```{r}
+rm(list = ls())
+```
+
+# Packages
+```{r}
+library(tidyverse) # install.packages('tidyverse')
+library(emmeans)
+library(ggpubr) # install.packages('ggpubr')
+library(plyr) # install.packages('plyr')
+library(beepr) # install.packages('beepr')
+library(plotrix) # install.packages('plotrix')
+library(ggcorrplot) # install.packages("ggcorrplot")
+source('../Functions/MSL Tools.R')
+```
+
+# Load Data
+```{r}
+fileInventories <- rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
+  dplyr::rename(DatabaseID = `Sub #`,
+                dxTime = `Time Since Diagnosis`) %>%
+  dplyr::select(DatabaseID, dxTime, MoCA)
+
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::filter(ratingType == "Int") %>%
+  dplyr::filter(condition == "conv") %>%
+  dplyr::group_by(DatabaseID, StudyID) %>%
+  dplyr::summarise(Rating_M = mean(Rating, na.rm = T))
+
+speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(!`Folder 2`:`Sentence Repetition`) %>%
+  base::merge(., fileInventories) %>%
+  base::merge(., listenerRatings) %>%
+  
+  # Making sure dxTime is numeric
+  dplyr::mutate(dxTime = as.numeric(dxTime)) %>%
+  
+  # Refactoring Sex
+  dplyr::mutate(Sex = factor(Sex, 
+                             levels = c(
+                               "M",
+                               "F"
+                               ),
+                             labels = c(
+                               "Male Speakers",
+                               "Female Speakers"
+                             ))) %>%
+  
+  # Severity-surrogate ratings
+  dplyr::mutate(Severity = case_when(
+    Group == "HC" ~ "",
+    Rating_M > 94 ~ "Normal",
+    between(Rating_M, 85, 94.99) ~ "Mild",
+    between(Rating_M, 70, 84.99) ~ "Moderate",
+    between(Rating_M, 45, 69.99) ~ "Severe",
+    Rating_M < 45 ~ "Profound"
+  )) %>%
+  
+  # Removing the MoCA Scores - Not all speakers had them
+  dplyr::select(!MoCA)
+```
+
+
+
+# Plots
+```{r}
+myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
+color_HC <- myPal[2] 
+color_PD <- myPal[6]
+```
+
+## Figure 1 - Correlation Plots
+```{r}
+
+  # aI Measures ----
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+
+corTable <- corrr::correlate(aiMeasures %>%
+                               dplyr::select(Int_M,
+                                             AP_M,
+                                             acoDistance,
+                                             F2_Slope,
+                                             kinDistance,
+                                             TB_speedMax
+                                             ) %>%
+                               dplyr::rename(`Intelligibility` = Int_M,
+                                             `Articulatory Precision` = AP_M,
+                                             `Acoustic Distance` = acoDistance,
+                                             `F2 Slope` = F2_Slope,
+                                             `Kinematic Distance` = kinDistance,
+                                             `TB Speed` = TB_speedMax),
+                             method = "pearson", diagonal = 1) %>%
+  dplyr::mutate_at(.vars = c("Intelligibility",
+                             "Articulatory Precision",
+                             "Acoustic Distance",
+                             "Kinematic Distance",
+                             "F2 Slope",
+                             "TB Speed"),
+                   .funs = round,
+                   digits = 2) %>%
+  column_to_rownames(var = "term")
+
+corrPlot_ai <- ggcorrplot(
+    corTable,
+    hc.order = TRUE,
+    type = "lower",
+    outline.col = "white",
+    lab = TRUE,
+    ggtheme = ggplot2::theme_classic) +
+    scale_fill_gradient2(limit = c(-0.5,1),
+                         low = color_PD,
+                         high =  color_HC,
+                         mid = "white",
+                         midpoint = 0,
+                         name = "Correlation\nCoefficient\n")
+  
+  
+  # VSA Measures ----
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+
+corTable <- corrr::correlate(vsaMeasures %>%
+                               dplyr::select(Int_M,
+                                             AP_M,
+                                             aVSA,
+                                             kVSA,
+                                             ) %>%
+                               dplyr::rename(`Intelligibility` = Int_M,
+                                             `Articulatory Precision` = AP_M,
+                                             `Acoustic VSA` = aVSA,
+                                             `Kinematic VSA` = kVSA),
+                             method = "pearson", diagonal = 1) %>%
+  dplyr::mutate_at(.vars = c("Intelligibility",
+                             "Articulatory Precision",
+                             "Acoustic VSA",
+                             "Kinematic VSA"),
+                   .funs = round,
+                   digits = 2) %>%
+  column_to_rownames(var = "term") %>%
+  dplyr::mutate(`Acoustic VSA` = `Acoustic VSA`/1000)
+
+corrPlot_vsa <- ggcorrplot(
+    corTable,
+    hc.order = F,
+    type = "lower",
+    outline.col = "white",
+    lab = TRUE,
+    ggtheme = ggplot2::theme_classic) +
+    scale_fill_gradient2(limit = c(-0.5,1),
+                         low = color_PD,
+                         high =  color_HC,
+                         mid = "white",
+                         midpoint = 0,
+                         name = "Correlation\nCoefficient\n")
+  
+
+  
+  corrPlot <- corrPlot_vsa + corrPlot_ai + patchwork::plot_layout(guides = "collect")
+  corrPlot
+  
+  # Correlation Plots
+   ggsave(filename = "Figure 1_Correlation Matrix.png",
+       plot = corrPlot,
+       path = "Plots/",
+       height = 3,
+       width = 6.5,
+       units = "in",
+       scale = 1.5)
+```
+
+## Figure 2 - Intelligibility & Articulatory Precision
+```{r}
+
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less Clear",
+                                     "Conversational",
+                                     "More Clear"
+                                   ))) %>%
+  dplyr::rename(Condition = condition) %>%
+  ggplot() +
+  aes(x = AP_M,
+      y = Int_M,
+      shape = Condition,
+      color = Group) +
+  geom_point() +
+  stat_smooth(
+    aes(x = AP_M,
+        y = Int_M),
+    inherit.aes = F,
+    method = "lm",
+    formula = y ~ splines::bs(x, 3),
+    color = "black",
+    linewidth = .8) +
+  geom_abline(linetype = 2) +
+  
+  # Adding the Labels
+  labs(x = "Articulatory Precision (VAS)",
+       y = "Intelligibility (VAS)") +
+  
+  # Changing the colors
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  
+  # Modifying the Theme
+  theme_minimal() +
+  theme(aspect.ratio = 1) +
+  coord_cartesian(xlim = c(0,100),
+                  ylim = c(0,100))
+
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+dplyr::mutate(aVSA = aVSA/1000,
+  Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less Clear",
+                                     "Conversational",
+                                     "More Clear"
+                                   ))) %>%
+  ggplot() +
+  aes(x = aVSA,
+      y = kVSA,
+      shape = Condition,
+      color = Group) +
+  geom_point() +
+  
+  stat_smooth(
+    aes(x = aVSA,
+        y = kVSA),
+    inherit.aes = F,
+    method = "lm",
+    color = "black",
+    linewidth = .8) +
+  
+  # Adding the Labels
+  labs(x = "Acoustic VSA (kHz²)",
+       y = "Kinematic VSA (mm)") +
+  
+  # Changing the colors
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  
+  # Modifying the Theme
+  theme_minimal() +
+  theme(aspect.ratio = 1)
+vsaMeasures
+
+figure2 <- aiMeasures + vsaMeasures + patchwork::plot_layout(ncol = 2,
+                                                             guides = "collect")
+figure2
+
+ggsave(filename = "Figure 2_measure relationships.png",
+       plot = figure2,
+       path = "Plots/",
+       height = 3.2,
+       width = 6.5,
+       scale = 1.3,
+       bg = "white")
+```
+
+
+
+## Figure 3 - Int & AP ~ VSA
+```{r}
+# Load the models
+Int_VSA_finalModel <- base::readRDS(file = "Models/Int_VSA_finalModel.rds")
+
+# Just scatter plot ----
+plot_VSA_data <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   ))) %>%
+  tidyr::pivot_longer(cols = c(Int_M,AP_M),
+                      names_to = "ratingType",
+                      values_to = "Rating") %>%
+  dplyr::mutate(ratingType = factor(ratingType,
+                                    levels = c("Int_M","AP_M"),
+                                    labels = c("Intelligibility (VAS)",
+                                               "Articulatory Precision (VAS)")),
+                aVSA = aVSA/1000)
+
+
+  
+# Making the Plot
+plot_VSA <- plot_VSA_data %>%
+  ggplot() +
+  aes(y = Rating,
+      x = aVSA) +
+  geom_point(aes(
+    shape = Condition,
+    color = Group),
+    alpha = 1) +
+  geom_smooth(method = "lm",
+              color = "#2A2A28",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Facet by Sex
+  facet_grid(ratingType ~ Sex,
+             scales = "free_x") +
+  
+  # Changing the y axis scale
+  #coord_cartesian(ylim = c(0,850)) +
+  #scale_y_continuous(breaks=c(0, 25, 50, 75, 100)) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_VSA
+
+# Scatter plot + Model Predictions ----
+  modelData <- rbind(Int_VSA_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(Int_VSA_finalModel),
+                                    ratingType = "Int") %>%
+                      dplyr::rename(Rating = Int_M),
+                    AP_VSA_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(AP_VSA_finalModel),
+                                    ratingType = "AP") %>%
+                      dplyr::rename(Rating = AP_M)) %>%
+  dplyr::select(!Sex) %>%
+  dplyr::mutate(ratingType = case_when(
+    ratingType == "Int" ~ "Intelligibility (VAS)",
+    ratingType == "AP" ~ "Articulatory Precision (VAS)"
+  )) %>%
+  base::merge(., plot_VSA_data) %>%
+  dplyr::mutate(Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   )),
+                ratingType = factor(ratingType,
+                                    levels = c(
+                                      "Intelligibility (VAS)",
+                                      "Articulatory Precision (VAS)"
+                                    )))
+  
+plot_VSA_modelData <- modelData %>%
+  ggplot() +
+  aes(y = Rating,
+      x = aVSA) +
+  
+  # Adding the points
+  geom_point(aes(
+    shape = Condition,
+    color = Group
+    ),
+    alpha = .3) +
+
+  # Adding the model prediction lines
+  geom_line(aes(y = fit,
+                x = aVSA,
+                group = StudyID,
+                color = Group),
+            size = .8) +
+  
+  # Facet by Sex
+  facet_grid(ratingType ~ Sex,
+             scales = "free_x") +
+
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_VSA_modelData
+
+ggsave(filename = "Figure 3_VSA Results.png",
+       plot = plot_VSA_modelData,
+       path = "Plots/",
+       height = 5,
+       width = 6,
+       scale = 1)
+```
+
+## Figure 4 - Int & AP ~ kinDistance
+```{r}
+# Load the models
+Int_ai_finalModel <- base::readRDS(file = "Models/Int_ai_finalModel.rds")
+
+# Just scatter plots ----
+plot_ai_data <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   ))) %>%
+  tidyr::pivot_longer(cols = c(Int_M,AP_M),
+                      names_to = "ratingType",
+                      values_to = "Rating") %>%
+  dplyr::mutate(ratingType = factor(ratingType,
+                                    levels = c("Int_M","AP_M"),
+                                    labels = c("Intelligibility (VAS)",
+                                               "Articulatory Precision (VAS)")))
+
+
+# Making the Plot
+plot_ai <- plot_ai_data %>%
+  ggplot() +
+  aes(y = Rating,
+      x = kinDistance) +
+  geom_point(aes(
+    shape = Condition,
+    color = Group),
+    alpha = .8) +
+  geom_smooth(
+    method = "lm",
+              color = "#2A2A28",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Facet by Sex
+  facet_grid(ratingType~Sex,
+             scales = "free_x") +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Kinematic (TB) Distance (mm'^2*")")) +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    #axis.text.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_ai
+
+# Scatter plot + Model Predictions  ----
+## Get the model data
+  modelData <- rbind(Int_ai_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(Int_ai_finalModel),
+                                    ratingType = "Int") %>%
+                      dplyr::rename(Rating = Int_M),
+                    AP_ai_finalModel@frame %>%
+                      dplyr::mutate(fit = predict(AP_ai_finalModel),
+                                    ratingType = "AP") %>%
+                      dplyr::rename(Rating = AP_M)) %>%
+  dplyr::select(!Sex) %>%
+  dplyr::mutate(ratingType = case_when(
+    ratingType == "Int" ~ "Intelligibility (VAS)",
+    ratingType == "AP" ~ "Articulatory Precision (VAS)"
+  )) %>%
+  base::merge(., plot_ai_data) %>%
+  dplyr::mutate(Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   )),
+                ratingType = factor(ratingType,
+                                    levels = c(
+                                      "Intelligibility (VAS)",
+                                      "Articulatory Precision (VAS)"
+                                    )))
+
+
+
+## Making the Plot
+plot_ai_speakerSlopes <- modelData %>%
+  ggplot() +
+  aes(y = Rating,
+      x = kinDistance) +
+  geom_point(aes(
+    shape = Condition,
+    color = Group
+    ),
+    alpha = .3) +
+
+  # Adding the model prediction lines
+  geom_line(aes(y = fit,
+                x = kinDistance,
+                group = StudyID,
+                color = Group),
+            size = .8) +
+  
+  # Facet by Sex
+  facet_grid(ratingType~Sex,
+             scales = "free_x") +
+  
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Kinematic (TB) Distance (mm'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_ai_speakerSlopes
+
+ggsave(filename = "Figure 4_kinDistance Results.png",
+       plot = plot_ai_speakerSlopes,
+       path = "Plots/",
+       height = 5,
+       width = 6,
+       scale = 1)
+
+```

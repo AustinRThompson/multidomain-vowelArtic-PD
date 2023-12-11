@@ -516,18 +516,15 @@ Int_VSA_finalModel <- Int_VSA_m5
 
 summary(Int_VSA_finalModel)
 
-# Obtain R-squared values using r.squaredGLMM
-r_squared <- MuMIn::r.squaredGLMM(Int_VSA_finalModel)
+# Saving the model
+base::saveRDS(
+  object = Int_VSA_finalModel,
+  file = "Models/Int_VSA_finalModel.rds")
 
-# Compare the R-squared values
-cat("R-squared for this model is", r_squared, "\n")
-
-emms <- emmeans(Int_VSA_finalModel, ~ Sex)
-
-# Compare EMMs for Condition and Sex
-pairs(emms,
-      adjust = "Tukey"
-      )
+# Taking out the trash
+rm(list=ls(pattern="^Int_m"))
+rm(list=ls(pattern="^emms_"))
+rm(modelData)
 
 ```
 
@@ -688,6 +685,16 @@ anova(Int_ai_m7, Int_ai_m8)
 Int_ai_finalModel <- Int_ai_m7
 
 summary(Int_ai_finalModel)
+
+# Saving the model
+base::saveRDS(
+  object = Int_ai_finalModel,
+  file = "Models/Int_ai_finalModel.rds")
+
+# Taking out the trash
+rm(list=ls(pattern="^Int_m"))
+rm(list=ls(pattern="^emms_"))
+rm(modelData)
 ```
 #### Table
 ```{r}
@@ -800,11 +807,15 @@ AP_VSA_finalModel <- AP_VSA_m5
 
 summary(AP_VSA_finalModel)
 
-emms_sex <- emmeans(AP_VSA_finalModel, ~ Sex)
-# Compare EMMs for Condition and Sex
-pairs(emms_sex,
-      adjust = "Tukey"
-      )
+# Saving the model
+base::saveRDS(
+  object = AP_VSA_finalModel,
+  file = "Models/AP_VSA_finalModel.rds")
+
+# Taking out the trash
+rm(list=ls(pattern="^Int_m"))
+rm(list=ls(pattern="^emms_"))
+rm(modelData)
 ```
 
 #### Table
@@ -947,6 +958,17 @@ AP_ai_finalModel <- AP_ai_m7
 
 summary(AP_ai_finalModel)
 
+# Saving the model
+base::saveRDS(
+  object = AP_ai_finalModel,
+  file = "Models/AP_ai_finalModel.rds")
+
+# Taking out the trash
+rm(list=ls(pattern="^Int_m"))
+rm(list=ls(pattern="^emms_"))
+rm(modelData)
+
+stop()
 ```
 
 #### Table
@@ -1316,7 +1338,7 @@ plot_ai_speakerSlopes
 
 ## Scatterplots
 ```{r}
-plot_scatterplot_ai <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+plot_scatterplot_ai <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
   dplyr::mutate(Sex = factor(Sex,
                              levels = c("M",
                                         "F"),
