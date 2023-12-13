@@ -7,6 +7,7 @@ This script generates the tables for Study 1 (A multidimensional examination of 
 # Packages
 ```{r}
 library(tidyverse)
+library(emmeans)
 library(webshot2) # install.packages('webshot2')
 
 # Making sure there is a Tables folder
@@ -1066,6 +1067,7 @@ table_conditionDiff <- table_conditionDiff %>%
 
 ## Table S1 - Group Contrasts
 ```{r}
+
 table_groupDiff %>%
   dplyr::select(Measure:condition, estimate, SE, stat.value, df, p.value, sig) %>%
   dplyr::select(!contrast) %>%
@@ -1109,6 +1111,7 @@ table_groupDiff %>%
                        "Kinematic Speed (mm/s)"
                      ))) %>%
   arrange(Measure) %>%
+
   gt::gt(
     rowname_col = "condition",
     groupname_col = "Measure") %>%
