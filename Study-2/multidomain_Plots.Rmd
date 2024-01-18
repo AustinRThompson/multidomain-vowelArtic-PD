@@ -596,3 +596,115 @@ ggsave(filename = "Figure 4_kinDistance Results.png",
        scale = 1)
 
 ```
+
+## Figure 5 - aVSA & kVSA
+
+```{r}
+
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(DatabaseID:Sex) %>%
+  dplyr::filter(StudyID == "HCF03")
+
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
+  dplyr::select(DatabaseID, Group, condition, label,
+                F1_tempMid, F2_tempMid,
+                TB_x_tempMid, TB_y_tempMid) %>%
+  base::merge(., speakers, no.dups = F) %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(TB_x_tempMid = scale(TB_x_tempMid, center = T, scale = F),
+                TB_y_tempMid = scale(TB_y_tempMid, center = T, scale = F)) %>%
+  dplyr::group_by(Group, Sex, condition, label) %>%
+  dplyr::summarise(F1_tempMid = mean(F1_tempMid, na.rm = T),
+                   F2_tempMid = mean(F2_tempMid, na.rm = T),
+                   TB_x_tempMid = mean(TB_x_tempMid, na.rm = T),
+                   TB_y_tempMid = mean(TB_y_tempMid, na.rm = T)) %>%
+  dplyr::mutate(condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less Clear",
+                                     "Conversational",
+                                     "More Clear"
+                                   )),
+                label = case_when(
+                  label == "ae" ~ "æ",
+                  TRUE ~ label
+                ))
+
+
+aVSA <- vsaMeasures %>%
+  ggplot() +
+  aes(x = F2_tempMid,
+      y = F1_tempMid,
+      label = label,
+      color = Group,
+      linetype = Group,
+      fill = Group) +
+  geom_point() +
+  geom_polygon(fill = NA) +
+  geom_label(color = "white",
+             show.legend = FALSE) +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  facet_grid(~ condition) +
+  theme_minimal() +
+  theme(aspect.ratio = 1,
+        legend.position = "none") +
+  coord_cartesian(clip = "off") +
+  
+  # Labels
+  labs(x = "F2",
+       y = "F1",
+       title = "Acoustic VSA") +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+aVSA
+
+kVSA <- vsaMeasures %>%
+  ggplot() +
+  aes(x = TB_x_tempMid,
+      y = TB_y_tempMid,
+      label = label,
+      color = Group,
+      linetype = Group,
+      fill = Group) +
+  geom_point() +
+  geom_polygon(
+    fill=NA) +
+  geom_label(color = "white",
+             show.legend = FALSE) +
+  scale_x_reverse() +
+  facet_grid(~ condition) +
+  theme_minimal() +
+  theme(aspect.ratio = 1,
+        legend.position = "none") +
+  coord_cartesian(clip = "off") +
+  
+  # Labels
+  labs(x = "Anterior-Posterior (x)",
+       y = "Inferior-Superior (y)",
+       title = "Kinematic VSA") +
+  
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD))
+kVSA
+
+vsaComparisons <- aVSA + kVSA + 
+  patchwork::plot_layout(
+              ncol = 1)
+vsaComparisons
+
+ggsave(filename = "Plots/Figure 5_vsaComparison.png",
+       plot = vsaComparisons,
+       height = 3,
+       width = 3,
+       units = "in",
+       scale = 1.7)
+```
+

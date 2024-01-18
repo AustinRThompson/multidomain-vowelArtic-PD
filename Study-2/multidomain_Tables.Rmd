@@ -1,0 +1,102 @@
+---
+title: "Study 2: Tables"
+---
+
+This script generates the tables for Study 2 (Acoustic and kinematic predictors of intelligibility and articulatory precision in Parkinson’s disease).
+
+# Packages
+```{r}
+library(tidyverse)
+library(emmeans)
+library(webshot2) # install.packages('webshot2')
+
+# Making sure there is a Tables folder
+dir.create(path = "Study-2/Tables", showWarnings = F)
+```
+
+## Table 2 - VSA Models
+```{r}
+Int_VSA_finalModel <- base::readRDS(file = "Models/Int_VSA_finalModel.rds")
+AP_VSA_finalModel <- base::readRDS(file = "Models/AP_VSA_finalModel.rds")
+
+sjPlot::tab_model(
+  Int_VSA_finalModel,
+  AP_VSA_finalModel,
+  dv.labels = c("Intelligibility", "Articulatory Precision"),
+  file = "Tables/Table 2_VSA Final Model Table.html"
+)
+```
+
+## Table 3 - Diphthong Models
+```{r}
+Int_ai_finalModel <- base::readRDS(file = "Models/Int_ai_finalModel.rds")
+AP_ai_finalModel <- base::readRDS(file = "Models/AP_ai_finalModel.rds")
+
+sjPlot::tab_model(
+  Int_ai_finalModel,
+  AP_ai_finalModel,
+  pred.labels = c("(Intercept)", "Kinematic Distance", "Sex [F]"),
+  dv.labels = c("Intelligibility", "Articulatory Precision"),
+  file = "Tables/Table 3_Diphthong Final Model Table.html"
+)
+```
+
+# Supplemental Info
+## Table S1 - Int ~ VSA Model Building
+```{r}
+
+sjPlot::tab_model(
+  base::readRDS(file = "Models/Int_VSA_m1.rds"),
+  base::readRDS(file = "Models/Int_VSA_m2.rds"),
+  base::readRDS(file = "Models/Int_VSA_m4.rds"),
+  base::readRDS(file = "Models/Int_VSA_m5.rds"),
+  dv.labels = c("Model 1", "Model 2", "Model 3", "Final Model"),
+  show.ci = F,
+  file = "Tables/Table S1_Int VSA Model.html"
+)
+```
+
+
+## Table S2 - Int ~ Diphthong Model Building
+```{r}
+sjPlot::tab_model(
+  base::readRDS(file = "Models/Int_ai_m1.rds"),
+  base::readRDS(file = "Models/Int_ai_m2.rds"),
+  base::readRDS(file = "Models/Int_ai_m3.rds"),
+  base::readRDS(file = "Models/Int_ai_m4.rds"),
+  base::readRDS(file = "Models/Int_ai_m5.rds"),
+  base::readRDS(file = "Models/Int_ai_m7.rds"),
+  dv.labels = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5", "Final Model"),
+  show.ci = F,
+  file = "Tables/Table S2_Int Diphthong Model.html"
+)
+```
+
+## Table S3 - AP ~ VSA Model Building
+```{r}
+
+sjPlot::tab_model(
+  base::readRDS(file = "Models/AP_VSA_m1.rds"),
+  base::readRDS(file = "Models/AP_VSA_m2.rds"),
+  base::readRDS(file = "Models/AP_VSA_m4.rds"),
+  base::readRDS(file = "Models/AP_VSA_m5.rds"),
+  dv.labels = c("Model 1", "Model 2", "Model 3", "Final Model"),
+  show.ci = F,
+  file = "Tables/Table S3_AP VSA Model.html"
+)
+```
+
+## Table S4 - AP ~ Diphthong Model Building
+```{r}
+sjPlot::tab_model(
+  base::readRDS(file = "Models/AP_ai_m1.rds"),
+  base::readRDS(file = "Models/AP_ai_m2.rds"),
+  base::readRDS(file = "Models/AP_ai_m3.rds"),
+  base::readRDS(file = "Models/AP_ai_m4.rds"),
+  base::readRDS(file = "Models/AP_ai_m5.rds"),
+  base::readRDS(file = "Models/AP_ai_m7.rds"),
+  dv.labels = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5", "Final Model"),
+  show.ci = F,
+  file = "Tables/Table S4_AP Diphthong Model.html"
+)
+```
