@@ -15,6 +15,7 @@ library(plyr) # install.packages('plyr')
 library(beepr) # install.packages('beepr')
 library(plotrix) # install.packages('plotrix')
 library(ggcorrplot) # install.packages("ggcorrplot")
+library(corrr) # install.packages("corrr")
 source('../Functions/MSL Tools.R')
 ```
 
@@ -175,6 +176,8 @@ corrPlot_vsa <- ggcorrplot(
 
 ## Figure 2 - Intelligibility & Articulatory Precision
 ```{r}
+color_HC <- "#182952" 
+color_PD <- "#BF3437"
 
 aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
@@ -286,6 +289,7 @@ ggsave(filename = "Figure 2_measure relationships.png",
 ```{r}
 # Load the models
 Int_VSA_finalModel <- base::readRDS(file = "Models/Int_VSA_finalModel.rds")
+AP_VSA_finalModel <- base::readRDS(file = "Models/AP_VSA_finalModel.rds")
 
 # Just scatter plot ----
 plot_VSA_data <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
@@ -446,6 +450,7 @@ ggsave(filename = "Figure 3_VSA Results.png",
 ```{r}
 # Load the models
 Int_ai_finalModel <- base::readRDS(file = "Models/Int_ai_finalModel.rds")
+AP_ai_finalModel <- base::readRDS(file = "Models/AP_ai_finalModel.rds")
 
 # Just scatter plots ----
 plot_ai_data <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
