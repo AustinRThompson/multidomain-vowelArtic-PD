@@ -1308,7 +1308,8 @@ ggplot2::ggsave("Plots/Figure 5_Average Perceptual Ratings.png",
                 plot = last_plot(),
                 height = 6,
                 width = 6.5,
-                units = "in")
+                units = "in",
+                bg = "white")
 
 rm(plotData, segmentData, pointData, speakerList)
 ```

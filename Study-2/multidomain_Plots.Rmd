@@ -176,8 +176,6 @@ corrPlot_vsa <- ggcorrplot(
 
 ## Figure 2 - Intelligibility & Articulatory Precision
 ```{r}
-color_HC <- "#182952" 
-color_PD <- "#BF3437"
 
 aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
@@ -443,7 +441,8 @@ ggsave(filename = "Figure 3_VSA Results.png",
        path = "Plots/",
        height = 5,
        width = 6,
-       scale = 1)
+       scale = 1,
+       bg = "white")
 ```
 
 ## Figure 4 - Int & AP ~ kinDistance
@@ -598,7 +597,8 @@ ggsave(filename = "Figure 4_kinDistance Results.png",
        path = "Plots/",
        height = 5,
        width = 6,
-       scale = 1)
+       scale = 1,
+       bg = "white")
 
 ```
 
