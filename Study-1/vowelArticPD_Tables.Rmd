@@ -16,18 +16,21 @@ dir.create(path = "Study-1/Tables", showWarnings = F)
 
 # Loading the Data
 ```{r}
-fileInventories <- rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
+fileInventories <-
+  rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
   dplyr::rename(DatabaseID = `Sub #`,
                 dxTime = `Time Since Diagnosis`) %>%
   dplyr::select(DatabaseID, dxTime, MoCA)
 
-listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+listenerRatings <-
+  rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::filter(ratingType == "Int") %>%
   dplyr::filter(condition == "conv") %>%
   dplyr::group_by(DatabaseID, StudyID) %>%
   dplyr::summarise(Rating_M = mean(Rating, na.rm = T))
 
-speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+speakerList <-
+  rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
   dplyr::select(!`Folder 2`:`Sentence Repetition`) %>%
   base::merge(., fileInventories) %>%
   base::merge(., listenerRatings) %>%
@@ -36,25 +39,25 @@ speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") 
   dplyr::mutate(dxTime = as.numeric(dxTime)) %>%
   
   # Refactoring Sex
-  dplyr::mutate(Sex = factor(Sex, 
-                             levels = c(
-                               "M",
-                               "F"
-                               ),
-                             labels = c(
-                               "Male Speakers",
-                               "Female Speakers"
-                             ))) %>%
+  dplyr::mutate(Sex = factor(
+    Sex,
+    levels = c("M",
+               "F"),
+    labels = c("Male Speakers",
+               "Female Speakers")
+  )) %>%
   
   # Severity-surrogate ratings
-  dplyr::mutate(Severity = case_when(
-    Group == "HC" ~ "",
-    Rating_M > 94 ~ "Normal",
-    between(Rating_M, 85, 94.99) ~ "Mild",
-    between(Rating_M, 70, 84.99) ~ "Moderate",
-    between(Rating_M, 45, 69.99) ~ "Severe",
-    Rating_M < 45 ~ "Profound"
-  )) %>%
+  dplyr::mutate(
+    Severity = case_when(
+      Group == "HC" ~ "",
+      Rating_M > 94 ~ "Normal",
+      between(Rating_M, 85, 94.99) ~ "Mild",
+      between(Rating_M, 70, 84.99) ~ "Moderate",
+      between(Rating_M, 45, 69.99) ~ "Severe",
+      Rating_M < 45 ~ "Profound"
+    )
+  ) %>%
   
   # Removing the MoCA Scores - Not all speakers had them
   dplyr::select(!MoCA)
@@ -64,19 +67,23 @@ speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") 
 ### Intra-Reliability
 ```{r}
 # Loading the full data to obtain ranges for each measure.
-fullData_VSA <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-                dplyr::mutate(aVSA = aVSA / 1000) %>%
-                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
-                tidyr::pivot_longer(cols = aVSA:kVSA,
+fullData_VSA <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
                       names_to = "Measure",
                       values_to = "Value") %>%
   dplyr::group_by(Measure) %>%
   dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
 
-fullData_ai <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-                dplyr::select(DatabaseID:token,
-                              acoDistance, kinDistance,
-                              F2_Slope, TB_speedMax) %>%
+fullData_ai <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::select(DatabaseID:token,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedMax) %>%
   tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
                       names_to = "Measure",
                       values_to = "Value")  %>%
@@ -87,39 +94,79 @@ fullData <- rbind(fullData_ai, fullData_VSA)
 rm(fullData_ai, fullData_VSA)
 
 # Diphthong
-reliability_ai <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-    dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
+reliability_ai <-
+  rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::select(DatabaseID:token,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedMax) %>%
   tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
                       names_to = "Measure",
                       values_to = "intraRel") %>%
-  base::merge(.,
-              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-                dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
-  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
-                      names_to = "Measure",
-                      values_to = "Value"))
+  base::merge(
+    .,
+    rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+      dplyr::select(
+        DatabaseID:token,
+        acoDistance,
+        kinDistance,
+        F2_Slope,
+        TB_speedMax
+      ) %>%
+      tidyr::pivot_longer(
+        cols = acoDistance:TB_speedMax,
+        names_to = "Measure",
+        values_to = "Value"
+      )
+  )
 
 
 # VSA
 
-reliability_vsa <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+reliability_vsa <-
+  rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
   dplyr::mutate(aVSA = aVSA / 1000) %>%
-  dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+  dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
   tidyr::pivot_longer(cols = aVSA:kVSA,
                       names_to = "Measure",
                       values_to = "intraRel") %>%
-  base::merge(.,
-              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-                dplyr::mutate(aVSA = aVSA / 1000) %>%
-                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
-                tidyr::pivot_longer(cols = aVSA:kVSA,
-                      names_to = "Measure",
-                      values_to = "Value"))
+  base::merge(
+    .,
+    rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+      dplyr::mutate(aVSA = aVSA / 1000) %>%
+      dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+      tidyr::pivot_longer(
+        cols = aVSA:kVSA,
+        names_to = "Measure",
+        values_to = "Value"
+      )
+  )
 
-reliability <- rbind(reliability_ai %>%
-                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, intraRel),
-                     reliability_vsa %>%
-                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, intraRel))
+reliability <- rbind(
+  reliability_ai %>%
+    dplyr::select(
+      DatabaseID,
+      StudyID,
+      Group,
+      Age,
+      condition,
+      Measure,
+      Value,
+      intraRel
+    ),
+  reliability_vsa %>%
+    dplyr::select(
+      DatabaseID,
+      StudyID,
+      Group,
+      Age,
+      condition,
+      Measure,
+      Value,
+      intraRel
+    )
+)
 
 # Absolute error
 absError_ai <- reliability_ai %>%
@@ -145,19 +192,23 @@ stats::cor.test(x = reliability$Value,
 ### Inter-Reliability
 ```{r}
 # Loading the full data to obtain ranges for each measure.
-fullData_VSA <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-                dplyr::mutate(aVSA = aVSA / 1000) %>%
-                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
-                tidyr::pivot_longer(cols = aVSA:kVSA,
+fullData_VSA <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
                       names_to = "Measure",
                       values_to = "Value") %>%
   dplyr::group_by(Measure) %>%
   dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
 
-fullData_ai <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-                dplyr::select(DatabaseID:token,
-                              acoDistance, kinDistance,
-                              F2_Slope, TB_speedMax) %>%
+fullData_ai <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::select(DatabaseID:token,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedMax) %>%
   tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
                       names_to = "Measure",
                       values_to = "Value")  %>%
@@ -168,39 +219,79 @@ fullData <- rbind(fullData_ai, fullData_VSA)
 rm(fullData_ai, fullData_VSA)
 
 # Diphthong
-reliability_ai <- rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-    dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
+reliability_ai <-
+  rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::select(DatabaseID:token,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedMax) %>%
   tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
                       names_to = "Measure",
                       values_to = "InterRel") %>%
-  base::merge(.,
-              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-                dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, TB_speedMax) %>%
-  tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
-                      names_to = "Measure",
-                      values_to = "Value"))
+  base::merge(
+    .,
+    rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+      dplyr::select(
+        DatabaseID:token,
+        acoDistance,
+        kinDistance,
+        F2_Slope,
+        TB_speedMax
+      ) %>%
+      tidyr::pivot_longer(
+        cols = acoDistance:TB_speedMax,
+        names_to = "Measure",
+        values_to = "Value"
+      )
+  )
 
 
 # VSA
 
-reliability_vsa <- rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+reliability_vsa <-
+  rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
   dplyr::mutate(aVSA = aVSA / 1000) %>%
-  dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+  dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
   tidyr::pivot_longer(cols = aVSA:kVSA,
                       names_to = "Measure",
                       values_to = "InterRel") %>%
-  base::merge(.,
-              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-                dplyr::mutate(aVSA = aVSA / 1000) %>%
-                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
-                tidyr::pivot_longer(cols = aVSA:kVSA,
-                      names_to = "Measure",
-                      values_to = "Value"))
+  base::merge(
+    .,
+    rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+      dplyr::mutate(aVSA = aVSA / 1000) %>%
+      dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+      tidyr::pivot_longer(
+        cols = aVSA:kVSA,
+        names_to = "Measure",
+        values_to = "Value"
+      )
+  )
 
-reliability <- rbind(reliability_ai %>%
-                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, InterRel),
-                     reliability_vsa %>%
-                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, InterRel))
+reliability <- rbind(
+  reliability_ai %>%
+    dplyr::select(
+      DatabaseID,
+      StudyID,
+      Group,
+      Age,
+      condition,
+      Measure,
+      Value,
+      InterRel
+    ),
+  reliability_vsa %>%
+    dplyr::select(
+      DatabaseID,
+      StudyID,
+      Group,
+      Age,
+      condition,
+      Measure,
+      Value,
+      InterRel
+    )
+)
 
 # Absolute error
 absError_ai <- reliability_ai %>%
@@ -227,31 +318,33 @@ stats::cor.test(x = reliability$Value,
 ```{r}
 tableData <- base::merge(
   inter_absError %>%
-    dplyr::select(Measure,M,std_absError) %>%
+    dplyr::select(Measure, M, std_absError) %>%
     dplyr::rename(inter_absError = M,
                   inter_stdAbsError = std_absError),
   intra_absError %>%
-    dplyr::select(Measure,M,std_absError) %>%
+    dplyr::select(Measure, M, std_absError) %>%
     dplyr::rename(intra_absError = M,
                   intra_stdAbsError = std_absError),
 ) %>%
-  dplyr::mutate(Measure = factor(Measure,
-                                 levels = c(
-                                   "aVSA",
-                                   "acoDistance",
-                                   "F2_Slope",
-                                   "kVSA",
-                                   "kinDistance",
-                                   "TB_speedMax"
-                                 ),
-                                 labels = c(
-                                   "Acoustic VSA (kHz\U00B2)",
-                                   "Acoustic Distance (Hz)",
-                                   "F2 Slope (Hz/ms)",
-                                   "Kinematic VSA (mm\U00B2)",
-                                   "Kinematic Distance (mm)",
-                                   "Kinematic Speed (mm/s)"                                 
-                                 ))) %>%
+  dplyr::mutate(Measure = factor(
+    Measure,
+    levels = c(
+      "aVSA",
+      "acoDistance",
+      "F2_Slope",
+      "kVSA",
+      "kinDistance",
+      "TB_speedMax"
+    ),
+    labels = c(
+      "Acoustic VSA (kHz\U00B2)",
+      "Acoustic Distance (Hz)",
+      "F2 Slope (Hz/ms)",
+      "Kinematic VSA (mm\U00B2)",
+      "Kinematic Distance (mm)",
+      "Kinematic Speed (mm/s)"
+    )
+  )) %>%
   arrange(Measure)
 
 reliabilityTable <- tableData %>%
@@ -268,14 +361,10 @@ reliabilityTable <- tableData %>%
     intra_absError = "MAE",
     intra_stdAbsError = "Std. MAE",
   ) %>%
-  gt::fmt_number(
-    columns = inter_absError:intra_stdAbsError,
-    decimals = 2
-  ) %>%
-  gt::cols_align(
-    align = "right",
-    columns = "Measure"
-  )
+  gt::fmt_number(columns = inter_absError:intra_stdAbsError,
+                 decimals = 2) %>%
+  gt::cols_align(align = "right",
+                 columns = "Measure")
 reliabilityTable
 
 gt::gtsave(data = reliabilityTable,
@@ -288,107 +377,120 @@ gt::gtsave(data = reliabilityTable,
 ## Table 7 - Measure Variability
 ```{r}
 myPal <- rcartocolor::carto_pal(n = 15, name = "Geyser")
-color_HC <- myPal[2] 
+color_HC <- myPal[2]
 color_PD <- myPal[6]
 myPal_1 <- myPal[1]
 myPal_2 <- myPal[3]
 myPal_3 <- myPal[5]
 
-perceptualMeasures <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+perceptualMeasures <-
+  rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::rename(Measure = ratingType,
                 Value = Rating) %>%
   dplyr::group_by(condition, Measure, Sex) %>%
-  dplyr::summarise(M = mean(Value, na.rm = T),
-                   sd = sd(Value, na.rm = T),
-                   CV = sd / M * 100) %>%
+  dplyr::summarise(
+    M = mean(Value, na.rm = T),
+    sd = sd(Value, na.rm = T),
+    CV = sd / M * 100
+  ) %>%
   dplyr::ungroup() %>%
   dplyr::mutate(Domain = "Perceptual")
 
-vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
-                aVSA = aVSA/1000) %>%
+vsaMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F")),
+                aVSA = aVSA / 1000) %>%
   tidyr::pivot_longer(cols = aVSA:kVSA,
                       names_to = "Measure",
                       values_to = "Value") %>%
   dplyr::group_by(condition, Measure, Sex) %>%
-  dplyr::summarise(M = mean(Value, na.rm = T),
-                   sd = sd(Value, na.rm = T),
-                   CV = sd / M * 100) %>%
+  dplyr::summarise(
+    M = mean(Value, na.rm = T),
+    sd = sd(Value, na.rm = T),
+    CV = sd / M * 100
+  ) %>%
   dplyr::ungroup() %>%
-  dplyr::mutate(Domain = case_when(
-    Measure == "aVSA" ~ "Acoustic",
-    Measure == "kVSA" ~ "Kinematic",
-  ))
+  dplyr::mutate(Domain = case_when(Measure == "aVSA" ~ "Acoustic",
+                                   Measure == "kVSA" ~ "Kinematic",))
 
-aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F"))) %>%
-  tidyr::pivot_longer(cols = c(acoDistance, kinDistance,
-                               F2_Slope, TB_speedMax),
-                      names_to = "Measure",
-                      values_to = "Value") %>%
+aiMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F"))) %>%
+  tidyr::pivot_longer(
+    cols = c(acoDistance, kinDistance,
+             F2_Slope, TB_speedMax),
+    names_to = "Measure",
+    values_to = "Value"
+  ) %>%
   dplyr::group_by(condition, Measure, Sex) %>%
-  dplyr::summarise(M = mean(Value, na.rm = T),
-                   sd = sd(Value, na.rm = T),
-                   CV = sd / M * 100) %>%
+  dplyr::summarise(
+    M = mean(Value, na.rm = T),
+    sd = sd(Value, na.rm = T),
+    CV = sd / M * 100
+  ) %>%
   dplyr::ungroup() %>%
-  dplyr::mutate(Domain = case_when(
-    Measure == "acoDistance" ~ "Acoustic",
-    Measure == "F2_Slope" ~ "Acoustic",
-    Measure == "kinDistance" ~ "Kinematic",
-    Measure == "TB_speedMax" ~ "Kinematic",
-  ))
+  dplyr::mutate(
+    Domain = case_when(
+      Measure == "acoDistance" ~ "Acoustic",
+      Measure == "F2_Slope" ~ "Acoustic",
+      Measure == "kinDistance" ~ "Kinematic",
+      Measure == "TB_speedMax" ~ "Kinematic",
+    )
+  )
 
 variabilityMeasures <- rbind(perceptualMeasures,
                              aiMeasures,
                              vsaMeasures) %>%
-  dplyr::mutate(condition = factor(condition,
-                                   levels = c(
-                                     "lessClear",
-                                     "conv",
-                                     "moreClear"
-                                   ),
-                                   labels = c(
-                                     "Less Clear",
-                                     "Conversational",
-                                     "More Clear"
-                                   )),
-                Measure = factor(Measure,
-                                 levels = c(
-                                   "Int",
-                                   "AP",
-                                   "aVSA",
-                                   "kVSA",
-                                   "acoDistance",
-                                   "kinDistance",
-                                   "F2_Slope",
-                                   "TB_speedMax"
-                                 ),
-                                 labels = c(
-                                   "Intelligibility",
-                                   "Articulatory Precision",
-                                   "Acoustic VSA",
-                                   "Kinematic VSA",
-                                   "Acoustic Distance",
-                                   "Kinematic Distance",
-                                   "F2 Slope",
-                                   "Kinematic Speed"
-                                 )),
-                Domain = factor(Domain,
-                                levels = c(
-                                  "Perceptual",
-                                  "Acoustic",
-                                  "Kinematic"))) %>%
+  dplyr::mutate(
+    condition = factor(
+      condition,
+      levels = c("lessClear",
+                 "conv",
+                 "moreClear"),
+      labels = c("Less Clear",
+                 "Conversational",
+                 "More Clear")
+    ),
+    Measure = factor(
+      Measure,
+      levels = c(
+        "Int",
+        "AP",
+        "aVSA",
+        "kVSA",
+        "acoDistance",
+        "kinDistance",
+        "F2_Slope",
+        "TB_speedMax"
+      ),
+      labels = c(
+        "Intelligibility",
+        "Articulatory Precision",
+        "Acoustic VSA",
+        "Kinematic VSA",
+        "Acoustic Distance",
+        "Kinematic Distance",
+        "F2 Slope",
+        "Kinematic Speed"
+      )
+    ),
+    Domain = factor(Domain,
+                    levels = c("Perceptual",
+                               "Acoustic",
+                               "Kinematic"))
+  ) %>%
   arrange(Measure)
 
 variabilityMeasures %>%
-  tidyr::pivot_wider(names_from = c(condition, Sex),
-                     values_from = CV,
-                     id_cols = c(Domain, Measure)) %>%
+  tidyr::pivot_wider(
+    names_from = c(condition, Sex),
+    values_from = CV,
+    id_cols = c(Domain, Measure)
+  ) %>%
   
   # Creating the GT table
-  gt::gt(
-    rowname_col = "Measure",
-    groupname_col = "Domain") %>%
+  gt::gt(rowname_col = "Measure",
+         groupname_col = "Domain") %>%
   
   # Spanner for female speakers
   gt::tab_spanner(
@@ -427,10 +529,8 @@ variabilityMeasures %>%
   ) %>%
   
   # Formatting the CV values
-  gt::fmt_number(
-    columns = everything(),
-    decimals = 2
-  ) %>%
+  gt::fmt_number(columns = everything(),
+                 decimals = 2) %>%
   
   # Renaming the columns
   gt::cols_label(
@@ -451,13 +551,12 @@ variabilityMeasures %>%
       `More Clear_F`,
       `Less Clear_M`,
       Conversational_M,
-      `More Clear_M`)
+      `More Clear_M`
+    )
   ) %>%
   
-  gt::cols_align(
-    align = "right",
-    columns = c("Measure")
-  ) %>%
+  gt::cols_align(align = "right",
+                 columns = c("Measure")) %>%
   
   # Format groups
   gt::tab_options(row_group.as_column = TRUE) %>%
@@ -478,32 +577,24 @@ speakerList %>%
   
   # Creating the gt table
   gt::gt(rowname_col = "StudyID",
-    groupname_col = "Sex") %>%
+         groupname_col = "Sex") %>%
   
   # Title
-  gt::tab_header(
-      title = "Table S1",
-      subtitle = "Speaker demographics for the neurologically healthy control (HC) speaker group."
-      ) %>%
+  gt::tab_header(title = "Table S1",
+                 subtitle = "Speaker demographics for the neurologically healthy control (HC) speaker group.") %>%
   
   # Replace missing values with blanks
-  gt::sub_missing(
-  columns = everything(),
-  rows = everything(),
-  missing_text = ""
-  ) %>%
+  gt::sub_missing(columns = everything(),
+                  rows = everything(),
+                  missing_text = "") %>%
   
   # Renaming columns
-  gt::cols_label(
-    dxTime = "Time Since Diagnosis",
-    Rating_M = "Intelligibility (%)",
-  ) %>%
+  gt::cols_label(dxTime = "Time Since Diagnosis",
+                 Rating_M = "Intelligibility (%)",) %>%
   
   # Formatting the Intelligibility data
-  gt::fmt_number(
-  columns = Rating_M,
-  decimals = 2,
-  ) %>%
+  gt::fmt_number(columns = Rating_M,
+                 decimals = 2,) %>%
   
   # Adding summary rows
   ## Male Speakers
@@ -514,7 +605,7 @@ speakerList %>%
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
     ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
   ) %>%
   
   ## Female Speakers
@@ -525,46 +616,42 @@ speakerList %>%
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
     ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
   ) %>%
   
   
   # Adding footnote to Intelligibility
   gt::tab_footnote(
     footnote = "The reported intelligibility (%) scores are aggregated from the Visual Analog Scale (VAS) ratings made for conversational speech samples in the current study.",
-    locations = gt::cells_column_labels(
-      columns = Rating_M
-    )
+    locations = gt::cells_column_labels(columns = Rating_M)
   ) %>%
   
   # Adding footnote to HCM02
   gt::tab_footnote(
     footnote = "The HCM02 speaker, while healthy and intelligible, had a Spanish accent that likely influenced his intelligibility ratings. Further discussion about this speaker and the implications for his intelligibility ratings can be found in the limitations section.",
-    locations = gt::cells_body(
-      columns = Rating_M,
-      rows = StudyID =="HCM02"
-    )
+    locations = gt::cells_body(columns = Rating_M,
+                               rows = StudyID == "HCM02")
   ) %>%
   
   # Adding footnote to HCM04
   gt::tab_footnote(
     footnote = "The HCM04 speaker, presented with a perceptually rough voice quality consistent with healthy aging. This voice quality likely influenced his intelligibility ratings.",
-    locations = gt::cells_body(
-      columns = Rating_M,
-      rows = StudyID =="HCM04"
-    )
+    locations = gt::cells_body(columns = Rating_M,
+                               rows = StudyID == "HCM04")
   ) %>%
   
   # Format groups
-  gt::tab_options(row_group.as_column = FALSE,
-                  table.font.size = 13,
-                  data_row.padding = 0) %>%
+  gt::tab_options(
+    row_group.as_column = FALSE,
+    table.font.size = 13,
+    data_row.padding = 0
+  ) %>%
   
   gt::cols_align(align = c("center"),
                  columns = StudyID:Severity) %>%
   
   # Hiding time since diagnosis and severity
-  gt::cols_hide(columns = c(dxTime,Severity)) %>%
+  gt::cols_hide(columns = c(dxTime, Severity)) %>%
   
   # Saving the table
   gt::gtsave(filename = "Table S1_SpeakerDemo_HC.pdf",
@@ -581,38 +668,28 @@ speakerList %>%
   
   # Creating the gt table
   gt::gt(rowname_col = "StudyID",
-    groupname_col = "Sex") %>%
+         groupname_col = "Sex") %>%
   
   # Title
-  gt::tab_header(
-      title = "Table S2",
-      subtitle = "Speaker demographics for the Parkinson’s (PD) speaker group."
-      ) %>%
+  gt::tab_header(title = "Table S2",
+                 subtitle = "Speaker demographics for the Parkinson’s (PD) speaker group.") %>%
   
   # Replace missing values with blanks
-  gt::sub_missing(
-  columns = everything(),
-  rows = everything(),
-  missing_text = ""
-  ) %>%
+  gt::sub_missing(columns = everything(),
+                  rows = everything(),
+                  missing_text = "") %>%
   
   # Renaming columns
-  gt::cols_label(
-    dxTime = "Time Since Diagnosis (Years)",
-    Rating_M = "Intelligibility (%)",
-  ) %>%
+  gt::cols_label(dxTime = "Time Since Diagnosis (Years)",
+                 Rating_M = "Intelligibility (%)",) %>%
   
   # Formatting the Intelligibility data
-  gt::fmt_number(
-  columns = Rating_M,
-  decimals = 2,
-  ) %>%
+  gt::fmt_number(columns = Rating_M,
+                 decimals = 2,) %>%
   
   # Formatting the dxTime data
-  gt::fmt_number(
-  columns = dxTime,
-  decimals = 0,
-  ) %>%
+  gt::fmt_number(columns = dxTime,
+                 decimals = 0,) %>%
   
   # Adding summary rows
   ## Male Speakers
@@ -623,7 +700,7 @@ speakerList %>%
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
     ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
   ) %>%
   
   ## Female Speakers
@@ -634,29 +711,27 @@ speakerList %>%
       M = ~ mean(., na.rm = TRUE),
       SD = ~ sd(., na.rm = TRUE)
     ),
-    fmt = list(~ gt::fmt_number(., decimals = 2))
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
   ) %>%
   
   # Adding footnote to Intelligibility
   gt::tab_footnote(
     footnote = "The reported intelligibility (%) scores are aggregated from the Visual Analog Scale (VAS) ratings made for conversational speech samples in the current study.",
-    locations = gt::cells_column_labels(
-      columns = Rating_M
-    )
+    locations = gt::cells_column_labels(columns = Rating_M)
   ) %>%
   
   # Adding footnote to Severity
   gt::tab_footnote(
     footnote = "Severity labels were determined based on the intelligibility measures using the surrogate-severity measures outlined in Stipancic et al. (2022). Specifically, intelligibility values > 94% are `Normal`, 85% - 94% are `Mild`, 70% - 84% are `Moderate`, 45% - 69% are `Severe`, and < 45% are `Profound`.",
-    locations = gt::cells_column_labels(
-      columns = Severity
-    )
+    locations = gt::cells_column_labels(columns = Severity)
   ) %>%
   
   # Format groups
-  gt::tab_options(row_group.as_column = FALSE,
-                  table.font.size = 13,
-                  data_row.padding = 0) %>%
+  gt::tab_options(
+    row_group.as_column = FALSE,
+    table.font.size = 13,
+    data_row.padding = 0
+  ) %>%
   
   gt::cols_align(align = c("center"),
                  columns = StudyID:Severity) %>%
@@ -670,193 +745,161 @@ speakerList %>%
 ## Table S3 - Descriptives Table
 ```{r}
 # Perceptual Measures ----
-perceptualMeasures <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+perceptualMeasures <-
+  rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!1) %>%
   
   # Selecting only the data we need
   dplyr::select(DatabaseID, Group, Sex, condition, ratingType, Rating)
+
+## By Sex
+perceptualMeasures_bySex <- perceptualMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, Sex, condition, ratingType) %>%
+  dplyr::summarise(M = mean(Rating, na.rm = T),
+                   SD = sd(Rating, na.rm = T),) %>%
   
-  ## By Sex
-  perceptualMeasures_bySex <- perceptualMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, condition, ratingType) %>%
-    dplyr::summarise(
-      M = mean(Rating, na.rm = T),
-      SD = sd(Rating, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      )
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),)
+
+## All Speakers
+perceptualMeasures_allSpeakers <- perceptualMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, condition, ratingType) %>%
+  dplyr::summarise(M = mean(Rating, na.rm = T),
+                   SD = sd(Rating, na.rm = T),) %>%
   
-  ## All Speakers
-  perceptualMeasures_allSpeakers <- perceptualMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, condition, ratingType) %>%
-    dplyr::summarise(
-      M = mean(Rating, na.rm = T),
-      SD = sd(Rating, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      ) %>%
-    
-    # Add "All Speakers" label to the Sex
-    dplyr::mutate(Sex = "All Speakers")
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),) %>%
   
-  
-  perceptualMeasures <- base::rbind(
-    perceptualMeasures_allSpeakers,
-    perceptualMeasures_bySex,
-    deparse.level = 1) %>%
-    dplyr::relocate(Sex, .before = ratingType) %>%
-    dplyr::rename(Measure = ratingType)
-  
-  # Removing the unneeded items
-  rm(
-    perceptualMeasures_allSpeakers,
-    perceptualMeasures_bySex)
-  
-  
+  # Add "All Speakers" label to the Sex
+  dplyr::mutate(Sex = "All Speakers")
+
+
+perceptualMeasures <- base::rbind(perceptualMeasures_allSpeakers,
+                                  perceptualMeasures_bySex,
+                                  deparse.level = 1) %>%
+  dplyr::relocate(Sex, .before = ratingType) %>%
+  dplyr::rename(Measure = ratingType)
+
+# Removing the unneeded items
+rm(perceptualMeasures_allSpeakers,
+   perceptualMeasures_bySex)
+
+
 
 # VSA Measures ----
-vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-    
-    # Converting aVSA from Hz to kHz, to make table cleaner
-    dplyr::mutate(aVSA = aVSA / 1000) %>%
+vsaMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
   
-    # Selecting only the data we need
-    dplyr::select(DatabaseID:kVSA) %>%
-    
-    # Formatting for the table
-    tidyr::pivot_longer(cols = aVSA:kVSA,
-                        names_to = "Measure",
-                        values_to = "Value")
-
-  ## By Sex
-  vsaMeasures_bySex <- vsaMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group,condition),
-      values_from = c(M,SD),
-      )
-  
-  ## All Speakers
-  vsaMeasures_allSpeakers <- vsaMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-      ) %>%
-    
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      ) %>%
-    
-    # Add "All Speakers" label to the Sex
-    dplyr::mutate(Sex = "All Speakers")
-
-vsaMeasures <- base::rbind(
-  vsaMeasures_allSpeakers,
-  vsaMeasures_bySex,
-  deparse.level = 1
-  ) %>%
-  dplyr::relocate(Sex, .before = Measure)
-
-  # Removing the unneeded items
-  rm(
-    vsaMeasures_allSpeakers,
-    vsaMeasures_bySex)
-
-# /ai/ Measures ----
-aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  # Converting aVSA from Hz to kHz, to make table cleaner
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
   
   # Selecting only the data we need
-  dplyr::select(
-    DatabaseID:Group,
-    condition,
-    acoDistance,
-    kinDistance,
-    F2_Slope,
-    TB_speedMax,
-    ) %>%
+  dplyr::select(DatabaseID:kVSA) %>%
+  
+  # Formatting for the table
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value")
+
+## By Sex
+vsaMeasures_bySex <- vsaMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, Sex, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),)
+
+## All Speakers
+vsaMeasures_allSpeakers <- vsaMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),) %>%
+  
+  # Add "All Speakers" label to the Sex
+  dplyr::mutate(Sex = "All Speakers")
+
+vsaMeasures <- base::rbind(vsaMeasures_allSpeakers,
+                           vsaMeasures_bySex,
+                           deparse.level = 1) %>%
+  dplyr::relocate(Sex, .before = Measure)
+
+# Removing the unneeded items
+rm(vsaMeasures_allSpeakers,
+   vsaMeasures_bySex)
+
+# /ai/ Measures ----
+aiMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  
+  # Selecting only the data we need
+  dplyr::select(DatabaseID:Group,
+                condition,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedMax,) %>%
   
   # Formatting for the table
   tidyr::pivot_longer(cols = acoDistance:TB_speedMax,
                       names_to = "Measure",
                       values_to = "Value")
+
+## By sex
+aiMeasures_bySex <- aiMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, Sex, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
   
-  ## By sex
-  aiMeasures_bySex <- aiMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, Sex, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-    ) %>%
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),)
+
+## All Speakers
+aiMeasures_allSpeakers <- aiMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
   
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group,condition),
-      values_from = c(M,SD),
-      )
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),) %>%
   
-  ## All Speakers
-  aiMeasures_allSpeakers <- aiMeasures %>%
-    # Summarizing the measures by taking the average across groups
-    dplyr::group_by(Group, condition, Measure) %>%
-    dplyr::summarise(
-      M = mean(Value, na.rm = T),
-      SD = sd(Value, na.rm = T),
-    ) %>%
-  
-    # Pivoting the data back to wide for the table
-    tidyr::pivot_wider(
-      names_from = c(Group, condition),
-      values_from = c(M,SD),
-      ) %>%
-  
-    # Add "All Speakers" label to the Sex
-    dplyr::mutate(Sex = "All Speakers")
-  
-  aiMeasures <- base::rbind(
-    aiMeasures_allSpeakers,
-    aiMeasures_bySex,
-    deparse.level = 1
-    ) %>%
-    dplyr::relocate(Sex, .before = Measure)
-  
-  
-  # Removing the unneeded items
-  rm(
-    aiMeasures_allSpeakers,
-    aiMeasures_bySex)
-  
-  
+  # Add "All Speakers" label to the Sex
+  dplyr::mutate(Sex = "All Speakers")
+
+aiMeasures <- base::rbind(aiMeasures_allSpeakers,
+                          aiMeasures_bySex,
+                          deparse.level = 1) %>%
+  dplyr::relocate(Sex, .before = Measure)
+
+
+# Removing the unneeded items
+rm(aiMeasures_allSpeakers,
+   aiMeasures_bySex)
+
+
 # All Measures ----
-descriptivesData <- base::rbind(
-  perceptualMeasures,
-  vsaMeasures,
-  aiMeasures,
-  deparse.level = 1
-) %>%
-    dplyr::mutate_at(vars(-c(Sex,Measure)), round, digits = 2) %>%
-    dplyr::mutate(Measure = factor(
+descriptivesData <- base::rbind(perceptualMeasures,
+                                vsaMeasures,
+                                aiMeasures,
+                                deparse.level = 1) %>%
+  dplyr::mutate_at(vars(-c(Sex, Measure)), round, digits = 2) %>%
+  dplyr::mutate(
+    Measure = factor(
       Measure,
       levels = c(
         "Int",
@@ -867,63 +910,82 @@ descriptivesData <- base::rbind(
         "kVSA",
         "kinDistance",
         "TB_speedMax"
-       ),
-       labels = c(
-         "Intelligibility (VAS)",
-         "Articulatory Precision (VAS)",
-         "Acoustic VSA (kHz\U00B2)",
-         "Acoustic Distance (Hz)",
-         "F2 Slope (Hz/ms)",
-         "Kinematic VSA (mm\U00B2)",
-         "Kinematic Distance (mm)",
-         "Kinematic Speed (mm/s)"
-         )),
-        Sex = factor(Sex,
-                             levels = c(
-                               "All Speakers",
-                               "M",
-                               "F"),
-                             labels = c(
-                               "All Speakers",
-                               "Male Speakers",
-                               "Female Speakers"))) %>%
-    dplyr::arrange(Measure) %>%
-    dplyr::select(
-      Sex, Measure,
-      M_HC_conv, SD_HC_conv, M_PD_conv, SD_PD_conv,
-      M_HC_lessClear, SD_HC_lessClear, M_PD_lessClear, SD_PD_lessClear,
-      M_HC_moreClear, SD_HC_moreClear, M_PD_moreClear, SD_PD_moreClear,
+      ),
+      labels = c(
+        "Intelligibility (VAS)",
+        "Articulatory Precision (VAS)",
+        "Acoustic VSA (kHz\U00B2)",
+        "Acoustic Distance (Hz)",
+        "F2 Slope (Hz/ms)",
+        "Kinematic VSA (mm\U00B2)",
+        "Kinematic Distance (mm)",
+        "Kinematic Speed (mm/s)"
+      )
+    ),
+    Sex = factor(
+      Sex,
+      levels = c("All Speakers",
+                 "M",
+                 "F"),
+      labels = c("All Speakers",
+                 "Male Speakers",
+                 "Female Speakers")
     )
+  ) %>%
+  dplyr::arrange(Measure) %>%
+  dplyr::select(
+    Sex,
+    Measure,
+    M_HC_conv,
+    SD_HC_conv,
+    M_PD_conv,
+    SD_PD_conv,
+    M_HC_lessClear,
+    SD_HC_lessClear,
+    M_PD_lessClear,
+    SD_PD_lessClear,
+    M_HC_moreClear,
+    SD_HC_moreClear,
+    M_PD_moreClear,
+    SD_PD_moreClear,
+  )
+
+# Creating the GT table
+descriptivesTable <- descriptivesData %>%
+  gt::gt(rowname_col = "Measure",
+         groupname_col = "Sex") %>%
+  # Title
+  gt::tab_header(title = "Table S3",
+                 subtitle = "The target measures across the speaking conditions, presented for male, female, and all speakers.") %>%
   
-  # Creating the GT table
-  descriptivesTable <- descriptivesData %>%
-    gt::gt(
-      rowname_col = "Measure",
-      groupname_col = "Sex") %>%
-    # Title
-    gt::tab_header(
-      title = "Table S3",
-      subtitle = "The target measures across the speaking conditions, presented for male, female, and all speakers."
-      ) %>%
-    
-    
+  
   # Spanner 1: PD Speakers
   gt::tab_spanner(
     label = "PD",
     level = 1,
     gather = FALSE,
-    columns = c(M_PD_conv, SD_PD_conv,
-                M_PD_lessClear, SD_PD_lessClear,
-                M_PD_moreClear, SD_PD_moreClear)
+    columns = c(
+      M_PD_conv,
+      SD_PD_conv,
+      M_PD_lessClear,
+      SD_PD_lessClear,
+      M_PD_moreClear,
+      SD_PD_moreClear
+    )
   ) %>%
   # Spanner 1: HC Speakers
   gt::tab_spanner(
     label = "HC",
     level = 1,
     gather = FALSE,
-    columns = c(M_HC_conv, SD_HC_conv,
-                M_HC_lessClear, SD_HC_lessClear,
-                M_HC_moreClear, SD_HC_moreClear)
+    columns = c(
+      M_HC_conv,
+      SD_HC_conv,
+      M_HC_lessClear,
+      SD_HC_lessClear,
+      M_HC_moreClear,
+      SD_HC_moreClear
+    )
   ) %>%
   # Spanner 2: Conversational
   gt::tab_spanner(
@@ -940,20 +1002,24 @@ descriptivesData <- base::rbind(
     label = "Less Clear",
     level = 2,
     gather = TRUE,
-    columns = c(M_HC_lessClear,
-                SD_HC_lessClear,
-                M_PD_lessClear,
-                SD_PD_lessClear)
+    columns = c(
+      M_HC_lessClear,
+      SD_HC_lessClear,
+      M_PD_lessClear,
+      SD_PD_lessClear
+    )
   ) %>%
   # Spanner 2: More Clear
   gt::tab_spanner(
     label = "More Clear",
     level = 2,
     gather = TRUE,
-    columns = c(M_HC_moreClear,
-                SD_HC_moreClear,
-                M_PD_moreClear,
-                SD_PD_moreClear)
+    columns = c(
+      M_HC_moreClear,
+      SD_HC_moreClear,
+      M_PD_moreClear,
+      SD_PD_moreClear
+    )
   ) %>%
   gt::cols_label(
     M_HC_conv = "M",
@@ -969,29 +1035,27 @@ descriptivesData <- base::rbind(
     M_PD_moreClear = "M",
     SD_PD_moreClear = "SD"
   ) %>%
-    
+  
   # Align the measure labels to the right
-    gt::cols_align(
-      align = c("right"),
-      columns = Measure
-      ) %>%
+  gt::cols_align(align = c("right"),
+                 columns = Measure) %>%
   
-    # Format groups
-  gt::tab_options(row_group.as_column = FALSE,
-                  table.font.size = 10,
-                  column_labels.padding = 0,
-                  data_row.padding = 5,
-                  page.orientation = "landscape",
-                  page.width = "11in",
-                  page.height = "8.5in")
-  
-  # Save as .pdf
-  gt::gtsave(
-    data = descriptivesTable,
-    filename = "../Supplemental Information/Table S3_descriptivesTable.pdf"
-    )
+  # Format groups
+  gt::tab_options(
+    row_group.as_column = FALSE,
+    table.font.size = 10,
+    column_labels.padding = 0,
+    data_row.padding = 5,
+    page.orientation = "landscape",
+    page.width = "11in",
+    page.height = "8.5in"
+  )
 
-    
+# Save as .pdf
+gt::gtsave(data = descriptivesTable,
+           filename = "../Supplemental Information/Table S3_descriptivesTable.pdf")
+
+
 ```
 ## Emmeans Tables
 ```{r}

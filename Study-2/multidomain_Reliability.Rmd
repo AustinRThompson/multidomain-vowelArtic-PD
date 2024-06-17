@@ -1,0 +1,2037 @@
+---
+title: "Dissertation - Data Reliability"
+---
+
+```{r}
+rm(list = ls())
+```
+
+# Packages
+```{r}
+library(tidyverse) # install.packages('tidyverse')
+library(sp) # install.packages('sp')
+library(ggpubr) # install.packages('ggpubr')
+library(openxlsx) # install.packages('openxlsx')
+library(plyr) # install.packages('plyr')
+library(PraatR) # install.packages('PraatR')
+library(beepr) # install.packages('beepr')
+library(irr) # install.packages('irr')
+source('../Functions/MSL Tools.R')
+```
+
+
+# Intra-measurer Reliability (Within)
+## Loading the Data
+```{r}
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List.csv")
+```
+
+## Creating Folders
+```{r}
+dir.create(path = "../Data/PreppedData/Reliability",
+           showWarnings = F)
+
+# Intra
+dir.create(path = "Data/PreppedData/Reliability/Intrameasurer Reliability",
+           showWarnings = F)
+dir.create(path = "Data/PreppedData/Reliability/Intrameasurer Reliability/AcousticSegments",
+           showWarnings = F)
+dir.create(path = "Data/PreppedData/Reliability/Intrameasurer Reliability/MovementSegments",
+           showWarnings = F)
+```
+
+## Target Segments
+This code block extracts the target acoustic and movement data. It saves the data in the AcousticSegments and MovementSegments in the RawData > SpeakerData folder.
+
+This data is used in the next section to collate all of the data.
+```{r}
+relFiles <- list.files("../Data/RawData/SpeakerData/Reliability/Intrameasurer Reliability") %>%
+  gsub(pattern = ".TextGrid",
+       replacement = "")
+
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List.csv") %>%
+  dplyr::mutate(DatabaseID = as.factor(DatabaseID),
+                Group = as.factor(Group),
+                Sex = as.factor(Sex)) %>%
+  dplyr::filter(`Sentence Repetition` %in% relFiles)
+
+# Find which files have already been generated
+completed <- list.files(path = "../Data/PreppedData/Reliability/Intrameasurer Reliability/AcousticSegments") %>%
+  gsub(pattern = "_AcousticSegments.csv",
+       replacement = "_sync",
+       x = .) %>%
+  as.data.frame() %>%
+  dplyr::mutate(completed = TRUE) %>%
+  dplyr::rename(`Sentence Repetition` = 1)
+
+# Removing the completed speakers from this process
+speakers <- speakers %>%
+  base::merge(.,completed, all = TRUE) %>%
+  dplyr::mutate(completed = ifelse(is.na(completed),FALSE,TRUE)) %>%
+  dplyr::filter(completed == FALSE)
+
+
+fileInventories <- rio::import("/Volumes/Austin/Databases/CoarticData/File Inventories.xlsx")
+
+databasePath <- function(FileName){
+  if(is.null(FileName)) {
+    return(paste0("/Users/austinthompson/Library/CloudStorage/Dropbox/Work/Research/Databases/Coartic-Database"))
+  } else {
+    return(paste0("/Users/austinthompson/Library/CloudStorage/Dropbox/Work/Research/Databases/Coartic-Database/", FileName))
+  }
+}
+
+NC <- 1
+
+while (NC <= NROW(speakers)) {
+  # IDing Speaker & Pulling their info from the master File Inventories.xlsx
+  speaker <- speakers$DatabaseID[NC]
+  speaker_fileInventories <- fileInventories %>%
+    dplyr::filter(`Sub #` == speaker)
+  sex <- speaker_fileInventories$Sex
+  group <- speaker_fileInventories$Group
+  
+  # IDing TextGrid Files
+  if (speaker == "Sub25") {
+    sentRepFile <- "Sub25_1_014_sync"
+  } else {
+    sentRepFile <- speaker_fileInventories$`Sentence Repetition`
+  }
+  
+  textGridFile <- list.files(path = "../Data/RawData/SpeakerData/Reliability/Intrameasurer Reliability",
+                             pattern = sentRepFile,
+                             ignore.case = TRUE)
+  
+  # Reading TextGrid
+  tg <- rPraat::tg.read(paste0("../Data/RawData/SpeakerData/Reliability/Intrameasurer Reliability/",textGridFile))
+  
+  condition <- base::cbind(tg[["condition"]][["t1"]],
+                tg[["condition"]][["t2"]],
+                tg[["condition"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label)) %>%
+    dplyr::filter(label != "")
+  
+  phrase <- base::cbind(tg[["phrase"]][["t1"]],
+                tg[["phrase"]][["t2"]],
+                tg[["phrase"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label),
+                  condition = case_when(
+                    onset > condition$onset[condition$label == "conv"] &
+                      offset < condition$offset[condition$label == "conv"] ~ "conv",
+                    onset > condition$onset[condition$label == "moreclear"] &
+                      offset < condition$offset[condition$label == "moreclear"] ~ "moreClear",
+                    onset > condition$onset[condition$label == "lessclear"] &
+                      offset < condition$offset[condition$label == "lessclear"] ~ "lessClear",
+                  )) %>%
+    dplyr::filter(label != "") %>%
+    dplyr::group_by(condition) %>%
+    dplyr::mutate(phraseToken = make.unique(label)) %>%
+    dplyr::ungroup() %>%
+    dplyr::relocate(condition, .after = phraseToken)
+  
+  vowel <- base::cbind(tg[["vowel"]][["t1"]],
+                tg[["vowel"]][["t2"]],
+                tg[["vowel"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(DatabaseID = speaker,
+                  Group = group,
+                  onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label),
+                  condition = case_when(
+                    onset > condition$onset[condition$label == "conv"] &
+                      offset < condition$offset[condition$label == "conv"] ~ "conv",
+                    onset > condition$onset[condition$label == "moreclear"] &
+                      offset < condition$offset[condition$label == "moreclear"] ~ "moreClear",
+                    onset > condition$onset[condition$label == "lessclear"] &
+                      offset < condition$offset[condition$label == "lessclear"] ~ "lessClear",
+                  ),
+                  condition = as.factor(condition)) %>%
+    dplyr::filter(label != "") %>%
+    group_by(DatabaseID, condition) %>%
+    dplyr::mutate(token = make.unique(label),
+                  phrase = NA) %>%
+    dplyr::select(DatabaseID,Group,condition,phrase,label,token,onset,offset)
+  
+  # Assigning Phrase to each vowel
+  k <- 1
+  while(k <= NROW(vowel)) {
+    onset <- vowel$onset[k]
+    offset <- vowel$offset[k]
+    midpoint <- ((offset - onset)/2) + onset
+    targetPhrase <- phrase %>%
+      dplyr::filter(midpoint > onset & midpoint < offset) %>%
+      pull(phraseToken)
+    
+    vowel$phrase[k] <- targetPhrase
+    
+    k <- k + 1
+  }
+  rm(k)
+  
+  # Pulling the formant Data
+  formantFile <- list.files(path = "../Data/RawData/SpeakerData/FBWFiles",
+             pattern = sentRepFile,
+             ignore.case = T)
+  
+  formants <- utils::read.delim(file = paste0("../Data/RawData/SpeakerData/FBWFiles/",formantFile),
+                                header = F) %>%
+    dplyr::rename(time = 1,
+                  F1 = 2,
+                  F2 = 3,
+                  F3 = 4) %>%
+    dplyr::select(time, F1, F2, F3) %>%
+    dplyr::mutate(time = time/1000,
+                  F1 = F1*1000,
+                  F2 = F2*1000,
+                  F3 = F3*1000)
+  
+  # Pulling the movement data
+  speakerFolder <- list.files(paste0(databasePath(NULL),"/"),
+             pattern = paste0(speaker),
+             ignore.case = TRUE)
+  decoupledFile <- list.files(paste0(databasePath(speakerFolder),"/Decoupled Movement/"), 
+             pattern = gsub(sentRepFile, pattern = "_sync", replacement = ""),
+             ignore.case = TRUE)
+  
+  movement <- rio::import(paste0(paste0(databasePath(speakerFolder),
+                                        "/Decoupled Movement/"),
+                                 decoupledFile))
+  
+  
+  k <- 1
+  while(k <= nrow(vowel)) {
+    
+    targetAcoustic <- formants %>%
+      dplyr::filter(time >= vowel$onset[k]) %>%
+      dplyr::filter(time <= vowel$offset[k]) %>%
+      dplyr::mutate(DatabaseID = vowel$DatabaseID[k],
+                    Group = vowel$Group[k],
+                    condition = vowel$condition[k],
+                    phrase = vowel$phrase[k],
+                    label = vowel$label[k],
+                    token = vowel$token[k]) %>%
+      dplyr::relocate(DatabaseID:token, .before = time)
+    
+    targetMovement <- movement %>%
+      dplyr::filter(time >= vowel$onset[k]) %>%
+      dplyr::filter(time <= vowel$offset[k]) %>%
+      dplyr::mutate(DatabaseID = vowel$DatabaseID[k],
+                    Group = vowel$Group[k],
+                    condition = vowel$condition[k],
+                    phrase = vowel$phrase[k],
+                    label = vowel$label[k],
+                    token = vowel$token[k]) %>%
+      dplyr::relocate(DatabaseID:token, .before = time)
+    
+    if(k == 1) {
+      speakerAcoustic <- targetAcoustic
+      speakerMovement <- targetMovement
+    } else {
+      speakerAcoustic <- rbind(speakerAcoustic, targetAcoustic)
+      speakerMovement <- rbind(speakerMovement, targetMovement)
+    }
+    
+    rm(targetAcoustic, targetMovement)
+    k <- k + 1
+  }
+  
+  # Saving the Acoustic Segments
+  dir.create("../Data/PreppedData/Reliability/Intrameasurer Reliability/AcousticSegments",
+             showWarnings = F)
+  rio::export(x = speakerAcoustic,
+              file = paste0("../Data/PreppedData/Reliability/Intrameasurer Reliability/AcousticSegments/",
+                            gsub(pattern = "_sync",
+                                 replacement = "_AcousticSegments.csv",
+                                 x = sentRepFile)))
+  
+  # Saving the Movement Segments
+  dir.create("../Data/PreppedData/Reliability/Intrameasurer Reliability/MovementSegments",
+             showWarnings = F)
+  rio::export(x = speakerMovement,
+              file = paste0("../Data/PreppedData/Reliability/Intrameasurer Reliability/MovementSegments/",
+                            gsub(pattern = "_sync",
+                                 replacement = "_MovementSegments.csv",
+                                 x = sentRepFile)))
+  
+  NC <- NC + 1
+}
+
+print("Done!")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+```
+
+## Collate Data
+This block of code compiles all of the acoustic & movement data.
+```{r}
+# Creating Compiled Data
+dir.create(path = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData",
+           showWarnings = F)
+
+# Acoustic Segments
+file_names <- paste0("../Data/PreppedData/Reliability/Intrameasurer Reliability/AcousticSegments/",
+                     dir(path = "../Data/PreppedData/Reliability/Intrameasurer Reliability/AcousticSegments"))
+allAcousticSegments <- base::do.call(rbind,lapply(file_names,read.csv)) %>%
+    dplyr::filter(label != "ksent")
+
+
+rio::export(x = allAcousticSegments,
+            file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_AcousticSegments.csv")
+
+# Movement Segments
+file_names <- paste0("../Data/PreppedData/Reliability/Intrameasurer Reliability/MovementSegments/",
+                     dir(path = "../Data/PreppedData/Reliability/Intrameasurer Reliability/MovementSegments"))
+allMovementSegments <- base::do.call(rbind,lapply(file_names,read.csv))
+
+rio::export(x = allMovementSegments,
+            file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_MovementSegments.csv")
+```
+
+
+
+## Target Measures
+
+### Temporal midpoint
+This script calculates the temporal midpoint for the corner vowels, which will be used to measure acoustic and kinematic VSA in the next section.
+```{r}
+VowelData_acoustic <- rio::import("../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label == "a" | label == "i" | label == "ae" | label == "o") %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(acoData = data)
+
+VowelData_kinematic <- rio::import("../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(label == "a" | label == "i" | label == "ae" | label == "o") %>% 
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(ctb_x = scale(tb_x, center = T, scale = F),
+                ctb_y = scale(tb_y, center = T, scale = F)) %>%
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(kinData = data)
+
+vowelData_nested <- base::merge(VowelData_acoustic, VowelData_kinematic)
+
+
+tempMid <- function(data,measure) {
+
+  tempMid_data <- data %>%
+    dplyr::mutate(tempMid = (max(time, na.rm = T) - min(time, na.rm = T)) / 2 + min(time, na.rm = T),
+                  tempMid_diff = abs(time - tempMid)) %>%
+    dplyr::filter(which.min(tempMid_diff) == row_number())
+
+    tempMid_data <- tempMid_data %>%
+    pull({{measure}}) %>%
+    as.numeric()
+    
+   return(tempMid_data)
+
+}
+
+# apply the function to each group defined by DatabaseID, condition, and token
+vowelData_tempMid <- vowelData_nested %>%
+  dplyr::mutate(time_tempMid = map(acoData, tempMid, measure = time),
+                F1_tempMid = map(acoData, tempMid, measure = F1),
+                F2_tempMid = map(acoData, tempMid, measure = F2),
+                F3_tempMid = map(acoData, tempMid, measure = F3),
+                TF_x_tempMid = map(kinData, tempMid, measure = tf_x),
+                TF_y_tempMid = map(kinData, tempMid, measure = tf_y),
+                TB_x_tempMid = map(kinData, tempMid, measure = tb_x),
+                TB_y_tempMid = map(kinData, tempMid, measure = tb_y),
+                cTB_x_tempMid = map(kinData, tempMid, measure = ctb_x),
+                cTB_y_tempMid = map(kinData, tempMid, measure = ctb_y),
+                )
+
+rio::export(x = vowelData_tempMid %>%
+              dplyr::select(!acoData:kinData),
+            file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_tempMid.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+
+```
+
+### VSA
+This block calculates:
+(1) aVSA (acoustic VSA)
+(2) kVSA (kinematic VSA)
+
+```{r}
+vsa <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_tempMid.csv") %>%
+    dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  ),
+                  phrase = base::sub(pattern = "[.].*",
+                                     replacement = "",
+                                     x = phrase)) %>%
+  dplyr::rename(F1 = F1_tempMid,
+                F2 = F2_tempMid,
+                TB_x = TB_x_tempMid,
+                TB_y = TB_y_tempMid,
+                cTB_x = cTB_x_tempMid,
+                cTB_y = cTB_y_tempMid,
+                ) %>%
+  dplyr::group_by(DatabaseID,
+                  Group,
+                  condition,
+                  label,
+                  ) %>%
+  dplyr::summarise(F1 = mean(F1, na.rm = T),
+                   F2 = mean(F2, na.rm = T),
+                   TB_x = mean(TB_x, na.rm = T),
+                   TB_y = mean(TB_y, na.rm = T),
+                   cTB_x = mean(cTB_x, na.rm = T),
+                   cTB_y = mean(cTB_y, na.rm = T),
+                   ) %>%
+  dplyr::group_by(
+    DatabaseID,
+    Group,
+    condition,
+    ) %>%
+  # The cHull function calculates the VSA
+  dplyr::summarise(aVSA = cHull(F2, F1),
+                   kVSA = cHull(TB_x, TB_y),
+                   kVSA_centered = cHull(cTB_x, cTB_y),
+                   )
+
+
+rio::export(x = vsa,
+            file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_VSA.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+  
+```
+### /ai/ segments
+This segment of the script calculates:
+  (1) F2 Slope
+  (2) acoustic distance
+  (3) decoupled TB distance
+  (4) coupled TB distance
+  (5) jaw distance
+  (6) decoupled TB speed
+  (7) coupled TB speed
+  (8) jaw speed
+  
+```{r}
+source('../Functions/MSL Tools.R')
+
+# Prepping and nesting the data
+aiData_acoustic <- rio::import("../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label == "ai")
+
+aiData_acoustic_nested <- aiData_acoustic %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(acoData = data)
+
+aiData_kinematic <- rio::import("../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(label == "ai")
+
+aiData_kinematic_nested <- aiData_kinematic %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(kinData = data)
+
+aiData_nested <- base::merge(aiData_acoustic_nested,
+                             aiData_kinematic_nested)
+
+rm(aiData_acoustic, aiData_acoustic_nested,
+   aiData_kinematic, aiData_kinematic_nested)
+
+exampleData <- aiData_nested[[7]][[1]] # conv
+exampleData <- aiData_nested[[7]][[6]] #lessClear
+data <- aiData_nested[[8]][[1]]
+
+# /ai/ Acoustic Analysis Function
+ai_aco <- function(data, measure) {
+  
+# Acoustic Distance ----
+  data <- data %>%
+    dplyr::filter(F2 != 0) %>%
+    dplyr::mutate(F2_z = abs(scale(F2)),
+                  F1_z = abs(scale(F1))) %>%
+    # this gets rid of F2 outliers that were missed in smoothing
+    dplyr::filter(F2_z < 2) #%>%
+    #dplyr::mutate(F1 = ifelse(F1_z >= 2,NA,F1))
+
+# F2 Slope ---
+## F1 Cubic
+fit1_F1 <- lm(F1 ~ poly(time,1), data = data)
+fit1_F1_sum <- summary(fit1_F1)
+fit1_F1_r2 <- fit1_F1_sum$r.squared
+
+fit2_F1 <- lm(F1 ~ poly(time,2), data = data)
+fit2_F1_sum <- summary(fit2_F1)
+fit2_F1_r2 <- fit2_F1_sum$r.squared
+
+fit3_F1 <- lm(F1 ~ poly(time,3), data = data)
+fit3_F1_sum <- summary(fit3_F1)
+fit3_F1_r2 <- fit3_F1_sum$r.squared
+
+## F2 Cubic
+fit1_F2 <- lm(F2 ~ poly(time,1), data = data)
+fit1_F2_sum <- summary(fit1_F2)
+fit1_F2_r2 <- fit1_F2_sum$r.squared
+
+fit2_F2 <- lm(F2 ~ poly(time,2), data = data)
+fit2_F2_sum <- summary(fit2_F2)
+fit2_F2_r2 <- fit2_F2_sum$r.squared
+
+fit3_F2 <- lm(F2 ~ poly(time,3), data = data)
+fit3_F2_sum <- summary(fit3_F2)
+fit3_F2_r2 <- fit3_F2_sum$r.squared
+
+bestFit <- which.max(c(fit1_F2_r2,fit2_F2_r2,fit3_F2_r2))
+
+if (bestFit == 1) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit1_F2, data = .),
+                  pred_F1 = predict(fit1_F1, data = .),
+                  bestFit = "linear")
+} else if (bestFit == 2) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit2_F2, data = .),
+                  pred_F1 = predict(fit2_F1, data = .),
+                  bestFit = "quadratic")
+} else if (bestFit == 3) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit3_F2, data = .),
+                  pred_F1 = predict(fit3_F1, data = .),
+                  bestFit = "cubic")
+}
+
+onset <- data$time[which.min(data$pred_F2)]
+offset <- data$time[which.max(data$pred_F2)]
+
+if (onset < offset) {
+  ai <- data %>%
+    dplyr::filter(F2 > 5) %>%
+    dplyr::filter(time > onset) %>%
+    dplyr::filter(time < offset)
+} else {
+  ai <- data %>%
+    dplyr::filter(F2 > 5)
+}
+
+aiMeasures <- data_frame() %>%
+  add_row() %>%
+  dplyr::mutate(
+    onset = min(ai$time),
+    offset = max(ai$time),
+    duration = offset - onset,
+    highF2_F2 = base::max(ai$F2),
+    highF2_F1 = first(ai$F1[ai$F2 == base::max(ai$F2)]),
+    lowF2_F2 = base::min(ai$F2),
+    lowF2_F1 = first(ai$F1[ai$F2 == base::min(ai$F2)]),
+    extent = highF2_F2 - lowF2_F2,
+    F2_Slope = extent/(duration*1000),
+    bestFit = unique(ai$bestFit))
+
+    aiMeasures <- aiMeasures %>%
+    pull({{measure}})
+    
+   return(aiMeasures)
+
+}
+
+ai_kin <- function(data, measure) {
+  
+# Kinematic Distance ----
+  onsetData <- data %>%
+    first()
+  
+  offsetData <- data %>%
+    last()
+  
+# Speed
+  data <- data %>%
+    dplyr::mutate(time_diff = diff(c(NA,time)),
+                  TB_dist = c(NA,base::sqrt(diff(.$tb_x)^2 + diff(.$tb_y)^2)),
+                  TB_speed = TB_dist/time_diff,
+                  dTB_dist = c(NA,base::sqrt(diff(.$decoupled_tb_x)^2 + diff(.$decoupled_tb_y)^2)),
+                  dTB_speed = dTB_dist/time_diff,
+                  Jaw_dist = c(NA,base::sqrt(diff(.$jaw_x)^2 + diff(.$jaw_y)^2)),
+                  Jaw_speed = Jaw_dist/time_diff,
+                  )
+    
+  
+aiMeasures <- data_frame() %>%
+  add_row() %>%
+  dplyr::mutate(
+    onset = min(data$time),
+    offset = max(data$time),
+    duration = offset - onset,
+    # X and Y for Kinematic Distance
+    onset_TB_x = onsetData$tb_x,
+    onset_TB_y = onsetData$tb_y,
+    offset_TB_x = offsetData$tb_x,
+    offset_TB_y = offsetData$tb_y,
+    # TB measures
+    TB_speedAvg = base::mean(data$TB_speed, na.rm = T),
+    TB_speedMax = base::max(data$TB_speed, na.rm = T),
+    TB_distance = base::sum(data$TB_dist, na.rm = T),
+    TB_displacement = pull(euclideanDistance(x1 = onsetData$tb_x,
+                                        y1 = onsetData$tb_y,
+                                        x2 = offsetData$tb_x,
+                                        y2 = offsetData$tb_y)),
+    # dTB measures
+    dTB_speedAvg = base::mean(data$dTB_speed, na.rm = T),
+    dTB_speedMax = base::max(data$dTB_speed, na.rm = T),
+    dTB_distance = base::sum(data$dTB_dist, na.rm = T),
+    dTB_displacement = pull(euclideanDistance(x1 = onsetData$decoupled_tb_x,
+                                        y1 = onsetData$decoupled_tb_y,
+                                        x2 = offsetData$decoupled_tb_x,
+                                        y2 = offsetData$decoupled_tb_y)),
+    # Jaw measures
+    Jaw_speedAvg = base::mean(data$Jaw_speed, na.rm = T),
+    Jaw_speedMax = base::max(data$Jaw_speed, na.rm = T),
+    Jaw_distance = base::sum(data$Jaw_dist, na.rm = T),
+    Jaw_displacement = pull(euclideanDistance(x1 = onsetData$jaw_x,
+                                        y1 = onsetData$jaw_y,
+                                        x2 = offsetData$jaw_x,
+                                        y2 = offsetData$jaw_y)),
+    )
+    
+
+    aiMeasures <- aiMeasures %>%
+    pull({{measure}})
+    
+   return(aiMeasures)
+
+}
+
+# /ai/ Acoustic Analysis
+
+# apply the function to each group defined by DatabaseID, condition, and token
+aiData_Measures_nested <- aiData_nested %>%
+  dplyr::mutate(
+    # Acoustic Temporal Info
+    onset = map(acoData, ai_aco, measure = onset),
+    offset = map(acoData, ai_aco, measure = offset),
+    duration = map(acoData, ai_aco, measure = duration),
+    # F1 and F2 used to measure acoDistance
+    highF2_F1 = map(acoData, ai_aco, measure = highF2_F1),
+    highF2_F2 = map(acoData, ai_aco, measure = highF2_F2),
+    lowF2_F1 = map(acoData, ai_aco, measure = lowF2_F1),
+    lowF2_F2 = map(acoData, ai_aco, measure = lowF2_F2),
+    # F2 Slope
+    extent = map(acoData, ai_aco, measure = extent),
+    F2_Slope = map(acoData, ai_aco, measure = F2_Slope),
+    bestFit = map(acoData, ai_aco, measure = bestFit)) %>%
+  
+  # Now filtering the kinData to only include the transition phase
+  unnest(kinData) %>%
+  group_by(DatabaseID,Group,condition,phrase,label,token, onset, offset, duration, highF2_F1, highF2_F2, lowF2_F1, lowF2_F2, extent, F2_Slope, bestFit, acoData) %>%
+  dplyr::filter(time >= onset & time <= offset) %>%
+  nest() %>%
+  dplyr::rename(kinData = data) %>%
+
+  # Now calculate the kinematic measures
+  dplyr:: mutate(
+    # X and Y used to measure kinDistance
+    onset_TB_x = map(
+      kinData,
+      ai_kin,
+      measure = onset_TB_x
+    ),
+    onset_TB_y = map(
+      kinData,
+      ai_kin,
+      measure = onset_TB_y
+    ),
+    offset_TB_x = map(
+      kinData,
+      ai_kin,
+      measure = offset_TB_x
+    ),
+    offset_TB_y = map(
+      kinData,
+      ai_kin,
+      measure = offset_TB_y
+    ),
+    # TB Measures
+    TB_speedAvg = map(
+      kinData,
+      ai_kin,
+      measure = TB_speedAvg
+    ),
+    TB_speedMax = map(
+      kinData,
+      ai_kin,
+      measure = TB_speedMax
+    ),
+    TB_distance = map(
+      kinData,
+      ai_kin,
+      measure = TB_distance
+    ),
+    TB_displacement = map(
+      kinData,
+      ai_kin,
+      measure = TB_displacement
+    ),
+    # dTB Measures
+    dTB_speedAvg = map(
+      kinData,
+      ai_kin,
+      measure = dTB_speedAvg
+    ),
+    dTB_speedMax = map(
+      kinData,
+      ai_kin,
+      measure = dTB_speedMax
+    ),
+    dTB_distance = map(
+      kinData,
+      ai_kin,
+      measure = dTB_distance
+    ),
+    dTB_displacement = map(
+      kinData,
+      ai_kin,
+      measure = dTB_displacement
+    ),
+    # Jaw Measures
+    Jaw_speedAvg = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_speedAvg
+    ),
+    Jaw_speedMax = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_speedMax
+    ),
+    Jaw_distance = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_distance
+    ),
+    Jaw_displacement = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_displacement
+    ),
+  )
+
+aiData_Measures <- aiData_Measures_nested %>%
+  dplyr::ungroup() %>%
+  dplyr::select(!c(acoData, kinData)) %>%
+  unnest() %>%
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>%
+  dplyr::mutate(acoDistance = pull(euclideanDistance(x1 = highF2_F2,
+                                                y1 = highF2_F1,
+                                                x2 = lowF2_F2,
+                                                y2 = lowF2_F1)),
+                kinDistance = pull(euclideanDistance(x1 = onset_TB_x,
+                                                y1 = onset_TB_y,
+                                                x2 = offset_TB_x,
+                                                y2 = offset_TB_y)),
+                kinSpeed = kinDistance / duration)
+
+
+rio::export(x = aiData_Measures,
+            file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_aiMeasures.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+```
+
+## Final Measures
+This block cleans up the final Target Measures for analysis
+```{r}
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(DatabaseID:Age)
+
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
+  dplyr::select(!1) %>%
+  tidyr::pivot_wider(id_cols = c(DatabaseID, condition,Sent, rep),
+                     names_from = ratingType,
+                     values_from = c(M,SD,Count)) %>%
+  dplyr::rename(AP_M = M_AP,
+                AP_SD = SD_AP,
+                AP_N = Count_AP,
+                Int_M = M_Int,
+                Int_SD = SD_Int,
+                Int_N = Count_Int,
+                ) %>%
+  dplyr::group_by(DatabaseID, condition, rep) %>%
+  dplyr::summarise(Int_M = mean(Int_M, na.rm = T),
+                   Int_N = sum(Int_N),
+                   AP_M = mean(AP_M, na.rm = T),
+                   AP_N = sum(AP_N),
+                   )
+  
+# /ai/ measures
+aiMeasures <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_aiMeasures.csv") %>%
+  dplyr::select(DatabaseID:duration,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedAvg,
+                TB_speedMax,
+                TB_distance,
+                dTB_speedAvg,
+                dTB_speedMax,
+                dTB_distance,
+                Jaw_speedAvg,
+                Jaw_speedMax,
+                ) %>%
+  base::merge(., speakers) %>%
+  dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  )) %>%
+  dplyr::relocate(StudyID:Age, .after = DatabaseID) %>%
+  base::merge(., listenerRatings, all = T) %>%
+  dplyr::relocate(rep, .after = phrase) %>%
+  dplyr::relocate(condition, .after = Group) %>%
+  
+  # Removing instances of "-Inf" and replacing it with NA
+  dplyr::mutate(
+    TB_speedMax = ifelse(TB_speedMax == "-Inf",NA,TB_speedMax),
+    dTB_speedMax = ifelse(dTB_speedMax == "-Inf",NA,dTB_speedMax),
+    TB_distance = ifelse(TB_distance == 0,NA,TB_distance),
+    dTB_distance = ifelse(dTB_distance == 0,NA,dTB_distance),
+    ) %>%
+  
+  # Removing an outlier for TB_speedMax
+  dplyr::mutate(TB_speedMax = ifelse(TB_speedMax > 600,NA,TB_speedMax)) %>%
+  
+  # Removing instances of empty rows
+  dplyr::filter(!is.na(onset))
+
+  rio::export(x = aiMeasures, file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv")
+  
+# VSA Measures ----
+  vsaMeasures <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/allSpeakers_VSA.csv") %>%
+    base::merge(., speakers) %>%
+    base::merge(., listenerRatings %>%
+                  dplyr::group_by(DatabaseID,condition) %>%
+                  dplyr::summarise(
+                    Int_M = base::mean(Int_M, na.rm = T),
+                    Int_N = base::sum(Int_N, na.rm = T),
+                    AP_M = base::mean(AP_M, na.rm = T),
+                    AP_N = base::sum(AP_N, na.rm = T),
+                    )) %>%
+    dplyr::select(DatabaseID, StudyID, Group, Sex, Age, condition, aVSA:kVSA,Int_M:AP_N)
+  
+  rio::export(x = vsaMeasures, file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv")
+```
+
+## Calculating Intra-Reliability
+```{r}
+# Loading the full data to obtain ranges for each measure.
+fullData_VSA <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value") %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData_ai <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(kinSpeed = kinDistance / (duration * 1000)) %>%
+  dplyr::select(DatabaseID:token,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                kinSpeed) %>%
+  tidyr::pivot_longer(
+    cols = acoDistance:kinSpeed,
+    names_to = "Measure",
+    values_to = "Value"
+  )  %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData <- rbind(fullData_ai, fullData_VSA)
+rm(fullData_ai, fullData_VSA)
+
+# Diphthong
+reliability_ai <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+    dplyr::mutate(kinSpeed = kinDistance / (duration * 1000)) %>%
+    dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, kinSpeed) %>%
+  tidyr::pivot_longer(cols = acoDistance:kinSpeed,
+                      names_to = "Measure",
+                      values_to = "intraRel") %>%
+  base::merge(.,
+              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+                dplyr::mutate(kinSpeed = kinDistance / (duration * 1000)) %>%
+                dplyr::select(DatabaseID:token, acoDistance, kinDistance, F2_Slope, kinSpeed) %>%
+  tidyr::pivot_longer(cols = acoDistance:kinSpeed,
+                      names_to = "Measure",
+                      values_to = "Value"))
+
+
+# VSA
+
+reliability_vsa <- rio::import(file = "../Data/PreppedData/Reliability/Intrameasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "intraRel") %>%
+  base::merge(.,
+              rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+                dplyr::mutate(aVSA = aVSA / 1000) %>%
+                dplyr::select(DatabaseID:condition, aVSA,kVSA) %>%
+                tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value"))
+
+reliability <- rbind(reliability_ai %>%
+                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, intraRel),
+                     reliability_vsa %>%
+                       dplyr::select(DatabaseID, StudyID, Group, Age, condition, Measure, Value, intraRel))
+
+# Calculating ICC
+my_icc <- function(data) {
+  data %>%
+    select(Value, intraRel) %>% # select just the rating columns
+    irr::icc(model = "twoway",
+             type = "agreement",
+             unit = "single") %>%        # calculate the ICC
+    unlist() %>%          # turn the output list into a vector
+    t() %>%               # transpose this vector
+    as_tibble() %>%       # turn the vector into a table 
+    select(               # select just the columns you want
+      stimuli = subjects, # rename subjects to stimuli     
+      raters, 
+      icc = value,        # rename value to icc
+      lbound, 
+      ubound
+    ) %>%
+    # fix column modes (unlisting turned them all into characters)
+    mutate_at(vars(stimuli, raters), as.integer) %>% 
+    mutate_at(vars(icc:ubound), as.numeric)
+}
+
+ICC_intra <- reliability %>%
+  dplyr::select(Measure, Value, intraRel) %>%
+  dplyr::group_by(Measure) %>%
+  nest() %>%                                       # nest the rest of the columns
+  mutate(icc = map(data, my_icc)) %>%              # calculate ICC for each group
+  unnest(icc) %>%                                  # expand the tables returned to icc
+  select(-data) %>%
+  dplyr::mutate(
+    intra_ICC = round(icc, digits = 2),
+    intra_lbound = round(lbound, digits = 2),
+    intra_ubound = round(ubound, digits = 2),
+    APA = paste0(
+    Measure, ", ICC(2,A) = ",
+    intra_ICC, ", 95% CI [",
+    intra_lbound, " - ",
+    intra_ubound, "]"
+  ))
+
+
+# Absolute error
+absError_ai <- reliability_ai %>%
+  dplyr::mutate(absError = abs(Value - intraRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+absError_vsa <- reliability_vsa %>%
+  dplyr::mutate(absError = abs(Value - intraRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+intra_absError <- rbind(absError_ai, absError_vsa) %>%
+  base::merge(fullData) %>%
+  dplyr::mutate(std_absError = M / range)
+
+stats::cor.test(x = reliability$Value,
+                y = reliability$intraRel,
+                method = "pearson")
+```
+
+
+# Inter-measurer Reliability (Within)
+## Loading the Data
+```{r}
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List.csv")
+```
+
+## Creating Folders
+```{r}
+dir.create(path = "../Data/PreppedData/Reliability",
+           showWarnings = F)
+# Inter
+dir.create(path = "../Data/PreppedData/Reliability/Intermeasurer Reliability",
+           showWarnings = F)
+dir.create(path = "../Data/PreppedData/Reliability/Intermeasurer Reliability/AcousticSegments",
+           showWarnings = F)
+dir.create(path = "../Data/PreppedData/Reliability/Intermeasurer Reliability/MovementSegments",
+           showWarnings = F)
+```
+
+## Target Segments
+This code block extracts the target acoustic and movement data. It saves the data in the AcousticSegments and MovementSegments in the RawData > SpeakerData folder.
+
+This data is used in the next section to collate all of the data.
+```{r}
+relFiles <- list.files("../Data/RawData/SpeakerData/Reliability/Intermeasurer Reliability") %>%
+  gsub(pattern = ".TextGrid",
+       replacement = "") %>%
+  gsub(pattern = "_CW",
+     replacement = "")
+
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List.csv") %>%
+  dplyr::mutate(DatabaseID = as.factor(DatabaseID),
+                Group = as.factor(Group),
+                Sex = as.factor(Sex)) %>%
+  dplyr::filter(`Sentence Repetition` %in% relFiles)
+
+# Find which files have already been generated
+completed <- list.files(path = "../Data/PreppedData/Reliability/Intermeasurer Reliability/AcousticSegments") %>%
+  gsub(pattern = "_AcousticSegments.csv",
+       replacement = "_sync",
+       x = .) %>%
+    gsub(pattern = "_CW",
+     replacement = "") %>%
+  as.data.frame() %>%
+  dplyr::mutate(completed = TRUE) %>%
+  dplyr::rename(`Sentence Repetition` = 1)
+
+# Removing the completed speakers from this process
+speakers <- speakers %>%
+  base::merge(.,completed, all = TRUE) %>%
+  dplyr::mutate(completed = ifelse(is.na(completed),FALSE,TRUE)) %>%
+  dplyr::filter(completed == FALSE)
+
+
+fileInventories <- rio::import("/Volumes/Austin/Databases/CoarticData/File Inventories.xlsx")
+
+databasePath <- function(FileName){
+  if(is.null(FileName)) {
+    return(paste0("/Users/austinthompson/Library/CloudStorage/Dropbox/Work/Research/Databases/Coartic-Database"))
+  } else {
+    return(paste0("/Users/austinthompson/Library/CloudStorage/Dropbox/Work/Research/Databases/Coartic-Database/", FileName))
+  }
+}
+
+NC <- 1
+
+while (NC <= NROW(speakers)) {
+  # IDing Speaker & Pulling their info from the master File Inventories.xlsx
+  speaker <- speakers$DatabaseID[NC]
+  speaker_fileInventories <- fileInventories %>%
+    dplyr::filter(`Sub #` == speaker)
+  sex <- speaker_fileInventories$Sex
+  group <- speaker_fileInventories$Group
+  
+  # IDing TextGrid Files
+  if (speaker == "Sub25") {
+    sentRepFile <- "Sub25_1_014_sync"
+  } else {
+    sentRepFile <- speaker_fileInventories$`Sentence Repetition`
+  }
+  
+  textGridFile <- list.files(path = "../Data/RawData/SpeakerData/Reliability/Intermeasurer Reliability",
+                             pattern = sentRepFile,
+                             ignore.case = TRUE)
+  
+  # Reading TextGrid
+  tg <- rPraat::tg.read(paste0("../Data/RawData/SpeakerData/Reliability/Intermeasurer Reliability/",textGridFile))
+  
+  condition <- base::cbind(tg[["condition"]][["t1"]],
+                tg[["condition"]][["t2"]],
+                tg[["condition"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label)) %>%
+    dplyr::filter(label != "")
+  
+  phrase <- base::cbind(tg[["phrase"]][["t1"]],
+                tg[["phrase"]][["t2"]],
+                tg[["phrase"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label),
+                  condition = case_when(
+                    onset > condition$onset[condition$label == "conv"] &
+                      offset < condition$offset[condition$label == "conv"] ~ "conv",
+                    onset > condition$onset[condition$label == "moreclear"] &
+                      offset < condition$offset[condition$label == "moreclear"] ~ "moreClear",
+                    onset > condition$onset[condition$label == "lessclear"] &
+                      offset < condition$offset[condition$label == "lessclear"] ~ "lessClear",
+                  )) %>%
+    dplyr::filter(label != "") %>%
+    dplyr::group_by(condition) %>%
+    dplyr::mutate(phraseToken = make.unique(label)) %>%
+    dplyr::ungroup() %>%
+    dplyr::relocate(condition, .after = phraseToken)
+  
+  vowel <- base::cbind(tg[["vowel"]][["t1"]],
+                tg[["vowel"]][["t2"]],
+                tg[["vowel"]][["label"]]) %>%
+    as.data.frame() %>%
+    dplyr::rename(onset = 1,
+                  offset = 2,
+                  label = 3) %>%
+    dplyr::mutate(DatabaseID = speaker,
+                  Group = group,
+                  onset = base::as.numeric(onset),
+                  offset = base::as.numeric(offset),
+                  label = base::gsub(pattern = " ",
+                               replacement = "",
+                               x = label),
+                  label = base::tolower(label),
+                  condition = case_when(
+                    onset > condition$onset[condition$label == "conv"] &
+                      offset < condition$offset[condition$label == "conv"] ~ "conv",
+                    onset > condition$onset[condition$label == "moreclear"] &
+                      offset < condition$offset[condition$label == "moreclear"] ~ "moreClear",
+                    onset > condition$onset[condition$label == "lessclear"] &
+                      offset < condition$offset[condition$label == "lessclear"] ~ "lessClear",
+                  ),
+                  condition = as.factor(condition)) %>%
+    dplyr::filter(label != "") %>%
+    group_by(DatabaseID, condition) %>%
+    dplyr::mutate(token = make.unique(label),
+                  phrase = NA) %>%
+    dplyr::select(DatabaseID,Group,condition,phrase,label,token,onset,offset)
+  
+  # Assigning Phrase to each vowel
+  k <- 1
+  while(k <= NROW(vowel)) {
+    onset <- vowel$onset[k]
+    offset <- vowel$offset[k]
+    midpoint <- ((offset - onset)/2) + onset
+    targetPhrase <- phrase %>%
+      dplyr::filter(midpoint > onset & midpoint < offset) %>%
+      pull(phraseToken)
+    
+    if (identical(targetPhrase, character(0))) {
+      targetPhrase <- phrase %>%
+        dplyr::mutate(endDiff = abs(offset - midpoint),
+                      begDiff = abs(onset - midpoint)) %>%
+        dplyr::filter(row_number() == which.min(endDiff) |
+                        row_number() == which.min(begDiff)) %>%
+        tidyr::pivot_longer(
+          cols = c(endDiff, begDiff),
+          names_to = "time") %>%
+        dplyr::filter(row_number() == which.min(value)) %>%
+        pull(phraseToken)
+    }
+    
+    vowel$phrase[k] <- targetPhrase
+    
+    k <- k + 1
+  }
+  rm(k)
+  
+  # Pulling the formant Data
+  formantFile <- list.files(path = "../Data/RawData/SpeakerData/FBWFiles",
+             pattern = sentRepFile,
+             ignore.case = T)
+  
+  formants <- utils::read.delim(file = paste0("../Data/RawData/SpeakerData/FBWFiles/",formantFile),
+                                header = F) %>%
+    dplyr::rename(time = 1,
+                  F1 = 2,
+                  F2 = 3,
+                  F3 = 4) %>%
+    dplyr::select(time, F1, F2, F3) %>%
+    dplyr::mutate(time = time/1000,
+                  F1 = F1*1000,
+                  F2 = F2*1000,
+                  F3 = F3*1000)
+  
+  # Pulling the movement data
+  speakerFolder <- list.files(paste0(databasePath(NULL),"/"),
+             pattern = paste0(speaker),
+             ignore.case = TRUE)
+  decoupledFile <- list.files(paste0(databasePath(speakerFolder),"/Decoupled Movement/"), 
+             pattern = gsub(sentRepFile, pattern = "_sync", replacement = ""),
+             ignore.case = TRUE)
+  
+  movement <- rio::import(paste0(paste0(databasePath(speakerFolder),
+                                        "/Decoupled Movement/"),
+                                 decoupledFile))
+  
+  
+  k <- 1
+  while(k <= nrow(vowel)) {
+    
+    targetAcoustic <- formants %>%
+      dplyr::filter(time >= vowel$onset[k]) %>%
+      dplyr::filter(time <= vowel$offset[k]) %>%
+      dplyr::mutate(DatabaseID = vowel$DatabaseID[k],
+                    Group = vowel$Group[k],
+                    condition = vowel$condition[k],
+                    phrase = vowel$phrase[k],
+                    label = vowel$label[k],
+                    token = vowel$token[k]) %>%
+      dplyr::relocate(DatabaseID:token, .before = time)
+    
+    targetMovement <- movement %>%
+      dplyr::filter(time >= vowel$onset[k]) %>%
+      dplyr::filter(time <= vowel$offset[k]) %>%
+      dplyr::mutate(DatabaseID = vowel$DatabaseID[k],
+                    Group = vowel$Group[k],
+                    condition = vowel$condition[k],
+                    phrase = vowel$phrase[k],
+                    label = vowel$label[k],
+                    token = vowel$token[k]) %>%
+      dplyr::relocate(DatabaseID:token, .before = time)
+    
+    if(k == 1) {
+      speakerAcoustic <- targetAcoustic
+      speakerMovement <- targetMovement
+    } else {
+      speakerAcoustic <- rbind(speakerAcoustic, targetAcoustic)
+      speakerMovement <- rbind(speakerMovement, targetMovement)
+    }
+    
+    rm(targetAcoustic, targetMovement)
+    k <- k + 1
+  }
+  
+  # Saving the Acoustic Segments
+  dir.create("../Data/PreppedData/Reliability/Intermeasurer Reliability/AcousticSegments",
+             showWarnings = F)
+  rio::export(x = speakerAcoustic,
+              file = paste0("../Data/PreppedData/Reliability/Intermeasurer Reliability/AcousticSegments/",
+                            gsub(pattern = "_sync",
+                                 replacement = "_AcousticSegments.csv",
+                                 x = sentRepFile)))
+  
+  # Saving the Movement Segments
+  dir.create("../Data/PreppedData/Reliability/Intermeasurer Reliability/MovementSegments",
+             showWarnings = F)
+  rio::export(x = speakerMovement,
+              file = paste0("../Data/PreppedData/Reliability/Intermeasurer Reliability/MovementSegments/",
+                            gsub(pattern = "_sync",
+                                 replacement = "_MovementSegments.csv",
+                                 x = sentRepFile)))
+  
+  NC <- NC + 1
+}
+
+print("Done!")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+```
+
+## Collate Data
+This block of code compiles all of the acoustic & movement data.
+```{r}
+# Creating Compiled Data
+dir.create(path = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData",
+           showWarnings = F)
+
+# Acoustic Segments
+file_names <- paste0("../Data/PreppedData/Reliability/Intermeasurer Reliability/AcousticSegments/",
+                     dir(path = "../Data/PreppedData/Reliability/Intermeasurer Reliability/AcousticSegments"))
+allAcousticSegments <- base::do.call(rbind,lapply(file_names,read.csv)) %>%
+    dplyr::filter(label != "ksent")
+
+
+rio::export(x = allAcousticSegments,
+            file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_AcousticSegments.csv")
+
+# Movement Segments
+file_names <- paste0("../Data/PreppedData/Reliability/Intermeasurer Reliability/MovementSegments/",
+                     dir(path = "../Data/PreppedData/Reliability/Intermeasurer Reliability/MovementSegments"))
+allMovementSegments <- base::do.call(rbind,lapply(file_names,read.csv))
+
+rio::export(x = allMovementSegments,
+            file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_MovementSegments.csv")
+```
+
+
+
+## Target Measures
+
+## Temporal midpoint
+This script calculates the temporal midpoint for the corner vowels, which will be used to measure acoustic and kinematic VSA in the next section.
+```{r}
+VowelData_acoustic <- rio::import("../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label == "a" | label == "i" | label == "ae" | label == "o") %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(acoData = data)
+
+VowelData_kinematic <- rio::import("../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(label == "a" | label == "i" | label == "ae" | label == "o") %>% 
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(ctb_x = scale(tb_x, center = T, scale = F),
+                ctb_y = scale(tb_y, center = T, scale = F)) %>%
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(kinData = data)
+
+vowelData_nested <- base::merge(VowelData_acoustic, VowelData_kinematic)
+
+
+tempMid <- function(data,measure) {
+
+  tempMid_data <- data %>%
+    dplyr::mutate(tempMid = (max(time, na.rm = T) - min(time, na.rm = T)) / 2 + min(time, na.rm = T),
+                  tempMid_diff = abs(time - tempMid)) %>%
+    dplyr::filter(which.min(tempMid_diff) == row_number())
+
+    tempMid_data <- tempMid_data %>%
+    pull({{measure}}) %>%
+    as.numeric()
+    
+   return(tempMid_data)
+
+}
+
+# apply the function to each group defined by DatabaseID, condition, and token
+vowelData_tempMid <- vowelData_nested %>%
+  dplyr::mutate(time_tempMid = map(acoData, tempMid, measure = time),
+                F1_tempMid = map(acoData, tempMid, measure = F1),
+                F2_tempMid = map(acoData, tempMid, measure = F2),
+                F3_tempMid = map(acoData, tempMid, measure = F3),
+                TF_x_tempMid = map(kinData, tempMid, measure = tf_x),
+                TF_y_tempMid = map(kinData, tempMid, measure = tf_y),
+                TB_x_tempMid = map(kinData, tempMid, measure = tb_x),
+                TB_y_tempMid = map(kinData, tempMid, measure = tb_y),
+                cTB_x_tempMid = map(kinData, tempMid, measure = ctb_x),
+                cTB_y_tempMid = map(kinData, tempMid, measure = ctb_y),
+                )
+
+rio::export(x = vowelData_tempMid %>%
+              dplyr::select(!acoData:kinData),
+            file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_tempMid.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+
+```
+
+## VSA
+This block calculates:
+(1) aVSA (acoustic VSA)
+(2) kVSA (kinematic VSA)
+
+```{r}
+vsa <- rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_tempMid.csv") %>%
+    dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  ),
+                  phrase = base::sub(pattern = "[.].*",
+                                     replacement = "",
+                                     x = phrase)) %>%
+  dplyr::rename(F1 = F1_tempMid,
+                F2 = F2_tempMid,
+                TB_x = TB_x_tempMid,
+                TB_y = TB_y_tempMid,
+                cTB_x = cTB_x_tempMid,
+                cTB_y = cTB_y_tempMid,
+                ) %>%
+  dplyr::group_by(DatabaseID,
+                  Group,
+                  condition,
+                  label,
+                  ) %>%
+  dplyr::summarise(F1 = mean(F1, na.rm = T),
+                   F2 = mean(F2, na.rm = T),
+                   TB_x = mean(TB_x, na.rm = T),
+                   TB_y = mean(TB_y, na.rm = T),
+                   cTB_x = mean(cTB_x, na.rm = T),
+                   cTB_y = mean(cTB_y, na.rm = T),
+                   ) %>%
+  dplyr::group_by(
+    DatabaseID,
+    Group,
+    condition,
+    ) %>%
+  # The cHull function calculates the VSA
+  dplyr::summarise(aVSA = cHull(F2, F1),
+                   kVSA = cHull(TB_x, TB_y),
+                   kVSA_centered = cHull(cTB_x, cTB_y),
+                   )
+
+
+rio::export(x = vsa,
+            file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_VSA.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+  
+```
+
+## /ai/ segments
+This segment of the script calculates:
+  (1) F2 Slope
+  (2) acoustic distance
+  (3) decoupled TB distance
+  (4) coupled TB distance
+  (5) jaw distance
+  (6) decoupled TB speed
+  (7) coupled TB speed
+  (8) jaw speed
+  
+```{r}
+source('../Functions/MSL Tools.R')
+
+# Prepping and nesting the data
+aiData_acoustic <- rio::import("../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+  dplyr::filter(label == "ai")
+
+aiData_acoustic_nested <- aiData_acoustic %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(acoData = data)
+
+aiData_kinematic <- rio::import("../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_MovementSegments.csv") %>%
+  dplyr::filter(label == "ai")
+
+aiData_kinematic_nested <- aiData_kinematic %>% 
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>% 
+  nest() %>%
+  dplyr::rename(kinData = data)
+
+aiData_nested <- base::merge(aiData_acoustic_nested,
+                             aiData_kinematic_nested)
+
+rm(aiData_acoustic, aiData_acoustic_nested,
+   aiData_kinematic, aiData_kinematic_nested)
+
+exampleData <- aiData_nested[[7]][[1]] # conv
+exampleData <- aiData_nested[[7]][[6]] #lessClear
+data <- aiData_nested[[8]][[1]]
+
+# /ai/ Acoustic Analysis Function
+ai_aco <- function(data, measure) {
+  
+# Acoustic Distance ----
+  data <- data %>%
+    dplyr::filter(F2 != 0) %>%
+    dplyr::mutate(F2_z = abs(scale(F2)),
+                  F1_z = abs(scale(F1))) %>%
+    # this gets rid of F2 outliers that were missed in smoothing
+    dplyr::filter(F2_z < 2) #%>%
+    #dplyr::mutate(F1 = ifelse(F1_z >= 2,NA,F1))
+
+# F2 Slope ---
+## F1 Cubic
+fit1_F1 <- lm(F1 ~ poly(time,1), data = data)
+fit1_F1_sum <- summary(fit1_F1)
+fit1_F1_r2 <- fit1_F1_sum$r.squared
+
+fit2_F1 <- lm(F1 ~ poly(time,2), data = data)
+fit2_F1_sum <- summary(fit2_F1)
+fit2_F1_r2 <- fit2_F1_sum$r.squared
+
+fit3_F1 <- lm(F1 ~ poly(time,3), data = data)
+fit3_F1_sum <- summary(fit3_F1)
+fit3_F1_r2 <- fit3_F1_sum$r.squared
+
+## F2 Cubic
+fit1_F2 <- lm(F2 ~ poly(time,1), data = data)
+fit1_F2_sum <- summary(fit1_F2)
+fit1_F2_r2 <- fit1_F2_sum$r.squared
+
+fit2_F2 <- lm(F2 ~ poly(time,2), data = data)
+fit2_F2_sum <- summary(fit2_F2)
+fit2_F2_r2 <- fit2_F2_sum$r.squared
+
+fit3_F2 <- lm(F2 ~ poly(time,3), data = data)
+fit3_F2_sum <- summary(fit3_F2)
+fit3_F2_r2 <- fit3_F2_sum$r.squared
+
+bestFit <- which.max(c(fit1_F2_r2,fit2_F2_r2,fit3_F2_r2))
+
+if (bestFit == 1) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit1_F2, data = .),
+                  pred_F1 = predict(fit1_F1, data = .),
+                  bestFit = "linear")
+} else if (bestFit == 2) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit2_F2, data = .),
+                  pred_F1 = predict(fit2_F1, data = .),
+                  bestFit = "quadratic")
+} else if (bestFit == 3) {
+  data <- data %>%
+    dplyr::mutate(pred_F2 = predict(fit3_F2, data = .),
+                  pred_F1 = predict(fit3_F1, data = .),
+                  bestFit = "cubic")
+}
+
+onset <- data$time[which.min(data$pred_F2)]
+offset <- data$time[which.max(data$pred_F2)]
+
+if (onset < offset) {
+  ai <- data %>%
+    dplyr::filter(F2 > 5) %>%
+    dplyr::filter(time > onset) %>%
+    dplyr::filter(time < offset)
+} else {
+  ai <- data %>%
+    dplyr::filter(F2 > 5)
+}
+
+aiMeasures <- data_frame() %>%
+  add_row() %>%
+  dplyr::mutate(
+    onset = min(ai$time),
+    offset = max(ai$time),
+    duration = offset - onset,
+    highF2_F2 = base::max(ai$F2),
+    highF2_F1 = first(ai$F1[ai$F2 == base::max(ai$F2)]),
+    lowF2_F2 = base::min(ai$F2),
+    lowF2_F1 = first(ai$F1[ai$F2 == base::min(ai$F2)]),
+    extent = highF2_F2 - lowF2_F2,
+    F2_Slope = extent/(duration*1000),
+    bestFit = unique(ai$bestFit))
+
+    aiMeasures <- aiMeasures %>%
+    pull({{measure}})
+    
+   return(aiMeasures)
+
+}
+
+ai_kin <- function(data, measure) {
+  
+# Kinematic Distance ----
+  onsetData <- data %>%
+    first()
+  
+  offsetData <- data %>%
+    last()
+  
+# Speed
+  data <- data %>%
+    dplyr::mutate(time_diff = diff(c(NA,time)),
+                  TB_dist = c(NA,base::sqrt(diff(.$tb_x)^2 + diff(.$tb_y)^2)),
+                  TB_speed = TB_dist/time_diff,
+                  dTB_dist = c(NA,base::sqrt(diff(.$decoupled_tb_x)^2 + diff(.$decoupled_tb_y)^2)),
+                  dTB_speed = dTB_dist/time_diff,
+                  Jaw_dist = c(NA,base::sqrt(diff(.$jaw_x)^2 + diff(.$jaw_y)^2)),
+                  Jaw_speed = Jaw_dist/time_diff,
+                  )
+    
+  
+aiMeasures <- data_frame() %>%
+  add_row() %>%
+  dplyr::mutate(
+    onset = min(data$time),
+    offset = max(data$time),
+    duration = offset - onset,
+    # X and Y for Kinematic Distance
+    onset_TB_x = onsetData$tb_x,
+    onset_TB_y = onsetData$tb_y,
+    offset_TB_x = offsetData$tb_x,
+    offset_TB_y = offsetData$tb_y,
+    # TB measures
+    TB_speedAvg = base::mean(data$TB_speed, na.rm = T),
+    TB_speedMax = base::max(data$TB_speed, na.rm = T),
+    TB_distance = base::sum(data$TB_dist, na.rm = T),
+    TB_displacement = pull(euclideanDistance(x1 = onsetData$tb_x,
+                                        y1 = onsetData$tb_y,
+                                        x2 = offsetData$tb_x,
+                                        y2 = offsetData$tb_y)),
+    # dTB measures
+    dTB_speedAvg = base::mean(data$dTB_speed, na.rm = T),
+    dTB_speedMax = base::max(data$dTB_speed, na.rm = T),
+    dTB_distance = base::sum(data$dTB_dist, na.rm = T),
+    dTB_displacement = pull(euclideanDistance(x1 = onsetData$decoupled_tb_x,
+                                        y1 = onsetData$decoupled_tb_y,
+                                        x2 = offsetData$decoupled_tb_x,
+                                        y2 = offsetData$decoupled_tb_y)),
+    # Jaw measures
+    Jaw_speedAvg = base::mean(data$Jaw_speed, na.rm = T),
+    Jaw_speedMax = base::max(data$Jaw_speed, na.rm = T),
+    Jaw_distance = base::sum(data$Jaw_dist, na.rm = T),
+    Jaw_displacement = pull(euclideanDistance(x1 = onsetData$jaw_x,
+                                        y1 = onsetData$jaw_y,
+                                        x2 = offsetData$jaw_x,
+                                        y2 = offsetData$jaw_y)),
+    )
+    
+
+    aiMeasures <- aiMeasures %>%
+    pull({{measure}})
+    
+   return(aiMeasures)
+
+}
+
+# /ai/ Acoustic Analysis
+
+# apply the function to each group defined by DatabaseID, condition, and token
+aiData_Measures_nested <- aiData_nested %>%
+  dplyr::mutate(
+    # Acoustic Temporal Info
+    onset = map(acoData, ai_aco, measure = onset),
+    offset = map(acoData, ai_aco, measure = offset),
+    duration = map(acoData, ai_aco, measure = duration),
+    # F1 and F2 used to measure acoDistance
+    highF2_F1 = map(acoData, ai_aco, measure = highF2_F1),
+    highF2_F2 = map(acoData, ai_aco, measure = highF2_F2),
+    lowF2_F1 = map(acoData, ai_aco, measure = lowF2_F1),
+    lowF2_F2 = map(acoData, ai_aco, measure = lowF2_F2),
+    # F2 Slope
+    extent = map(acoData, ai_aco, measure = extent),
+    F2_Slope = map(acoData, ai_aco, measure = F2_Slope),
+    bestFit = map(acoData, ai_aco, measure = bestFit)) %>%
+  
+  # Now filtering the kinData to only include the transition phase
+  unnest(kinData) %>%
+  group_by(DatabaseID,Group,condition,phrase,label,token, onset, offset, duration, highF2_F1, highF2_F2, lowF2_F1, lowF2_F2, extent, F2_Slope, bestFit, acoData) %>%
+  dplyr::filter(time >= onset & time <= offset) %>%
+  nest() %>%
+  dplyr::rename(kinData = data) %>%
+
+  # Now calculate the kinematic measures
+  dplyr:: mutate(
+    # X and Y used to measure kinDistance
+    onset_TB_x = map(
+      kinData,
+      ai_kin,
+      measure = onset_TB_x
+    ),
+    onset_TB_y = map(
+      kinData,
+      ai_kin,
+      measure = onset_TB_y
+    ),
+    offset_TB_x = map(
+      kinData,
+      ai_kin,
+      measure = offset_TB_x
+    ),
+    offset_TB_y = map(
+      kinData,
+      ai_kin,
+      measure = offset_TB_y
+    ),
+    # TB Measures
+    TB_speedAvg = map(
+      kinData,
+      ai_kin,
+      measure = TB_speedAvg
+    ),
+    TB_speedMax = map(
+      kinData,
+      ai_kin,
+      measure = TB_speedMax
+    ),
+    TB_distance = map(
+      kinData,
+      ai_kin,
+      measure = TB_distance
+    ),
+    TB_displacement = map(
+      kinData,
+      ai_kin,
+      measure = TB_displacement
+    ),
+    # dTB Measures
+    dTB_speedAvg = map(
+      kinData,
+      ai_kin,
+      measure = dTB_speedAvg
+    ),
+    dTB_speedMax = map(
+      kinData,
+      ai_kin,
+      measure = dTB_speedMax
+    ),
+    dTB_distance = map(
+      kinData,
+      ai_kin,
+      measure = dTB_distance
+    ),
+    dTB_displacement = map(
+      kinData,
+      ai_kin,
+      measure = dTB_displacement
+    ),
+    # Jaw Measures
+    Jaw_speedAvg = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_speedAvg
+    ),
+    Jaw_speedMax = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_speedMax
+    ),
+    Jaw_distance = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_distance
+    ),
+    Jaw_displacement = map(
+      kinData,
+      ai_kin,
+      measure = Jaw_displacement
+    ),
+  )
+
+aiData_Measures <- aiData_Measures_nested %>%
+  dplyr::ungroup() %>%
+  dplyr::select(!c(acoData, kinData)) %>%
+  unnest() %>%
+  group_by(DatabaseID,Group,condition,phrase,label,token) %>%
+  dplyr::mutate(acoDistance = pull(euclideanDistance(x1 = highF2_F2,
+                                                y1 = highF2_F1,
+                                                x2 = lowF2_F2,
+                                                y2 = lowF2_F1)),
+                kinDistance = pull(euclideanDistance(x1 = onset_TB_x,
+                                                y1 = onset_TB_y,
+                                                x2 = offset_TB_x,
+                                                y2 = offset_TB_y)),
+                kinSpeed = kinDistance / duration)
+
+
+rio::export(x = aiData_Measures,
+            file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_aiMeasures.csv")
+
+# Alert that the code is finished running
+beepr::beep(sound = 3)
+```
+
+## Final Measures
+This block cleans up the final Target Measures for analysis
+```{r}
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(DatabaseID:Age)
+
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
+  dplyr::select(!1) %>%
+  tidyr::pivot_wider(id_cols = c(DatabaseID, condition,Sent, rep),
+                     names_from = ratingType,
+                     values_from = c(M,SD,Count)) %>%
+  dplyr::rename(AP_M = M_AP,
+                AP_SD = SD_AP,
+                AP_N = Count_AP,
+                Int_M = M_Int,
+                Int_SD = SD_Int,
+                Int_N = Count_Int,
+                ) %>%
+  dplyr::group_by(DatabaseID, condition, rep) %>%
+  dplyr::summarise(Int_M = mean(Int_M, na.rm = T),
+                   Int_N = sum(Int_N),
+                   AP_M = mean(AP_M, na.rm = T),
+                   AP_N = sum(AP_N),
+                   )
+  
+# /ai/ measures
+aiMeasures <- rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_aiMeasures.csv") %>%
+  dplyr::mutate(kinSpeed = TB_displacement / duration) %>%
+  dplyr::select(DatabaseID:duration,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                TB_speedAvg,
+                TB_speedMax,
+                TB_distance,
+                TB_displacement,
+                #dTB_speedAvg,
+                #dTB_speedMax,
+                #dTB_distance,
+                #Jaw_speedAvg,
+                #Jaw_speedMax,
+                ) %>%
+  base::merge(., speakers) %>%
+  dplyr::mutate(rep = base::sub(pattern = ".*[.]",
+                                     replacement = "",
+                                     x = phrase),
+                  rep = as.numeric(rep) + 1,
+                  rep = case_when(
+                    is.na(rep) ~ 1,
+                    TRUE ~ rep,
+                  )) %>%
+  dplyr::relocate(StudyID:Age, .after = DatabaseID) %>%
+  base::merge(., listenerRatings, all = T) %>%
+  dplyr::relocate(rep, .after = phrase) %>%
+  dplyr::relocate(condition, .after = Group) %>%
+  
+  # Removing instances of "-Inf" and replacing it with NA
+  dplyr::mutate(
+    TB_speedMax = ifelse(TB_speedMax == "-Inf",NA,TB_speedMax),
+    #dTB_speedMax = ifelse(dTB_speedMax == "-Inf",NA,dTB_speedMax),
+    TB_distance = ifelse(TB_distance == 0,NA,TB_distance),
+    #dTB_distance = ifelse(dTB_distance == 0,NA,dTB_distance),
+    ) %>%
+  
+  # Removing an outlier for TB_speedMax
+  dplyr::mutate(TB_speedMax = ifelse(TB_speedMax > 600,NA,TB_speedMax)) %>%
+  
+  # Removing instances of empty rows
+  dplyr::filter(!is.na(onset))
+
+  rio::export(x = aiMeasures, file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv")
+  
+# VSA Measures ----
+  vsaMeasures <- rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/allSpeakers_VSA.csv") %>%
+    base::merge(., speakers) %>%
+    base::merge(., listenerRatings %>%
+                  dplyr::group_by(DatabaseID,condition) %>%
+                  dplyr::summarise(
+                    Int_M = base::mean(Int_M, na.rm = T),
+                    Int_N = base::sum(Int_N, na.rm = T),
+                    AP_M = base::mean(AP_M, na.rm = T),
+                    AP_N = base::sum(AP_N, na.rm = T),
+                    )) %>%
+    dplyr::select(DatabaseID, StudyID, Group, Sex, Age, condition, aVSA:kVSA,Int_M:AP_N)
+  
+  rio::export(x = vsaMeasures, file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv")
+```
+
+## Calculating Inter-Reliability
+```{r}
+# Loading the full data to obtain ranges for each measure.
+fullData_VSA <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value") %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData_ai <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(kinSpeed = kinDistance / (duration * 1000)) %>%
+  dplyr::select(DatabaseID:token,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                kinSpeed) %>%
+  tidyr::pivot_longer(
+    cols = acoDistance:kinSpeed,
+    names_to = "Measure",
+    values_to = "Value"
+  )  %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(range = abs(min(Value, na.rm = T) - max(Value, na.rm = T)))
+
+fullData <- rbind(fullData_ai, fullData_VSA)
+rm(fullData_ai, fullData_VSA)
+
+# Diphthong
+reliability_ai <- base::merge(
+rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(kinSpeed = kinDistance / (duration* 1000)) %>%
+  dplyr::select(DatabaseID:token,
+                onset, offset,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                kinSpeed) %>%
+    tidyr::pivot_longer(cols = acoDistance:kinSpeed,
+                      names_to = "Measure",
+                      values_to = "InterRel"),
+  
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+      dplyr::mutate(kinSpeed = kinDistance / (duration * 1000)) %>%
+      dplyr::select(
+        DatabaseID:token,
+        onset1 = onset, 
+        offset1 = offset,
+        acoDistance,
+        kinDistance,
+        F2_Slope,
+        kinSpeed) %>%
+    tidyr::pivot_longer(cols = acoDistance:kinSpeed,
+                      names_to = "Measure",
+                      values_to = "Value"),
+#all = T
+) %>%
+  dplyr::mutate(diff_onset = onset - onset1)
+
+
+# Calculating ICC
+my_icc <- function(data) {
+  data %>%
+    select(Value, InterRel) %>% # select just the rating columns
+    irr::icc(model = "twoway",
+             type = "agreement",
+             unit = "single") %>%        # calculate the ICC
+    unlist() %>%          # turn the output list into a vector
+    t() %>%               # transpose this vector
+    as_tibble() %>%       # turn the vector into a table 
+    select(               # select just the columns you want
+      stimuli = subjects, # rename subjects to stimuli     
+      raters, 
+      icc = value,        # rename value to icc
+      lbound, 
+      ubound
+    ) %>%
+    # fix column modes (unlisting turned them all into characters)
+    mutate_at(vars(stimuli, raters), as.integer) %>% 
+    mutate_at(vars(icc:ubound), as.numeric)
+}
+
+# VSA
+
+reliability_vsa <-
+  rio::import(file = "../Data/PreppedData/Reliability/Intermeasurer Reliability/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "InterRel") %>%
+  base::merge(
+    .,
+    rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+      dplyr::mutate(aVSA = aVSA / 1000) %>%
+      dplyr::select(DatabaseID:condition, aVSA, kVSA) %>%
+      tidyr::pivot_longer(
+        cols = aVSA:kVSA,
+        names_to = "Measure",
+        values_to = "Value"
+      )
+  )
+
+reliability <- rbind(
+  reliability_ai %>%
+    dplyr::select(
+      DatabaseID,
+      StudyID,
+      Group,
+      Age,
+      condition,
+      Measure,
+      Value,
+      InterRel
+    ),
+  reliability_vsa %>%
+    dplyr::select(
+      DatabaseID,
+      StudyID,
+      Group,
+      Age,
+      condition,
+      Measure,
+      Value,
+      InterRel
+    )
+) %>%
+  dplyr::filter(!is.na(Value))
+
+ICC_inter <- reliability %>%
+  #dplyr::filter(condition == "conv") %>%
+  dplyr::select(Measure, Value, InterRel) %>%
+  dplyr::group_by(Measure) %>%
+  nest() %>%                                       # nest the rest of the columns
+  mutate(icc = map(data, my_icc)) %>%              # calculate ICC for each group
+  unnest(icc) %>%                                  # expand the tables returned to icc
+  select(-data) %>%
+  dplyr::mutate(
+    inter_ICC = round(icc, digits = 2),
+    inter_lbound = round(lbound, digits = 2),
+    inter_ubound = round(ubound, digits = 2),
+    APA = paste0(
+    Measure, ", ICC(2,A) = ",
+    inter_ICC, ", 95% CI [",
+    inter_lbound, " - ",
+    inter_ubound, "]"
+  ))
+
+
+# Absolute error
+absError_ai <- reliability_ai %>%
+  dplyr::mutate(absError = abs(Value - InterRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+absError_vsa <- reliability_vsa %>%
+  dplyr::mutate(absError = abs(Value - InterRel)) %>%
+  dplyr::group_by(Measure) %>%
+  dplyr::summarise(M = mean(absError, na.rm = T),
+                   sd = sd(absError, na.rm = T))
+
+inter_absError <- rbind(absError_ai, absError_vsa) %>%
+  base::merge(fullData) %>%
+  dplyr::mutate(std_absError = M / range)
+
+stats::cor.test(x = reliability$Value,
+                y = reliability$InterRel,
+                method = "pearson")
+```
+# Table
+```{r}
+iccTable <- base::merge(
+  
+  ICC_intra %>%
+    dplyr::select(
+      Measure,
+      intra_ICC:intra_ubound
+    ),
+  
+  ICC_inter %>%
+    dplyr::select(
+      Measure,
+      inter_ICC:inter_ubound
+    ),
+)
+rio::export(iccTable,
+            file = "../Data/PreppedData/Reliability/ICC data.csv")
+
+```
+

@@ -15,6 +15,7 @@ library(openxlsx) # install.packages('openxlsx')
 library(plyr) # install.packages('plyr')
 library(PraatR) # install.packages('PraatR')
 library(beepr) # install.packages('beepr')
+library(emuR) # install.packages('emuR')
 source('Functions/MSL Tools.R')
 ```
 
@@ -227,6 +228,9 @@ relRatings <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_
 
 cor <- stats::lm(Rating ~ Rating_rel, data = relRatings)
 summary(cor)
+
+rel <- lmerTest::lmer(Rating ~ Rating_rel + (1 | ListenerID), data = relRatings)
+summary(rel)
 
 sjPlot::tab_model(rel)
 
@@ -968,6 +972,19 @@ while(NC <= NROW(speakers)) {
 speakers <- rio::import(file = "Data/PreppedData/Speaker List.csv")
 
 # Distinguish Database.ID from Study.ID
+speakerSeverities <- rio::import("Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::filter(condition == "conv") %>%
+  dplyr::filter(ratingType == "Int") %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::summarise(Int = mean(Rating, na.rm = T))
+
+fileInventories <- rio::import("Data/RawData/File Inventories.xlsx") %>%
+  dplyr::select(DatabaseID = `Sub #`,
+                Group,
+                Sex,
+                dxTime = `Time Since Diagnosis`,
+                MoCA)
+
 speakerList <- speakers %>%
   #dplyr::rename(Database.ID = Speaker) %>%
   dplyr::arrange(Sex) %>%
@@ -976,10 +993,33 @@ speakerList <- speakers %>%
   dplyr::mutate(row_number = dplyr::row_number()) %>%
   dplyr::mutate(row_number = sprintf("%02d",row_number)) %>%
   dplyr::ungroup(Group) %>% 
-  tidyr::unite(Study.ID, Group,Sex, row_number, remove = FALSE, sep = "") %>%
+  tidyr::unite(Study.ID,
+               Group,
+               Sex,
+               row_number,
+               remove = FALSE,
+               sep = "") %>%
   dplyr::rename(StudyID = Study.ID) %>%
-  dplyr::select(!c(row_number))
-
+  dplyr::select(!c(row_number)) %>%
+  base::merge(., speakerSeverities) %>%
+  dplyr::mutate(
+    Int = round(Int, digits = 2),
+    Severity = case_when(
+      Group == "HC" ~ "",
+      Int > 94 ~ "Normal",
+      between(Int, 85, 94.99) ~ "Mild",
+      between(Int, 70, 84.99) ~ "Moderate",
+      between(Int, 45, 69.99) ~ "Severe",
+      Int < 45 ~ "Profound"
+    ),
+    Severity = ifelse(Group == "HC", "HC", Severity),
+    Severity = factor(
+      Severity,
+      levels = c("HC", "Mild", "Moderate", "Severe", "Profound")
+    )
+  ) %>%
+  base::merge(., fileInventories)
+    
 
 # Mean
 suppressMessages(
@@ -1143,6 +1183,10 @@ vsa <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv
                   phrase = base::sub(pattern = "[.].*",
                                      replacement = "",
                                      x = phrase)) %>%
+  dplyr::group_by(DatabaseID) %>%
+  dplyr::mutate(bF1 = emuR::bark(F1_tempMid),
+                bF2 = emuR::bark(F2_tempMid)) %>%
+  dplyr::ungroup() %>%
   dplyr::rename(F1 = F1_tempMid,
                 F2 = F2_tempMid,
                 TB_x = TB_x_tempMid,
@@ -1155,6 +1199,8 @@ vsa <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv
                   ) %>%
   dplyr::summarise(F1 = mean(F1, na.rm = T),
                    F2 = mean(F2, na.rm = T),
+                   bF1 = mean(bF1, na.rm = T),
+                   bF2 = mean(bF2, na.rm = T),
                    TB_x = mean(TB_x, na.rm = T),
                    TB_y = mean(TB_y, na.rm = T),
                    ) %>%
@@ -1165,6 +1211,7 @@ vsa <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv
     ) %>%
   # The cHull function calculates the VSA
   dplyr::summarise(aVSA = cHull(F2, F1),
+                   aVSA_bark = cHull(bF2, bF1),
                    kVSA = cHull(TB_x, TB_y),
                    )
 
@@ -1635,49 +1682,61 @@ listenerRatings <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRat
   
 # /ai/ measures
 aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_aiMeasures.csv") %>%
-  dplyr::select(DatabaseID:duration,
-                acoDistance,
-                kinDistance,
-                F2_Slope,
-                TB_speedAvg,
-                TB_speedMax,
-                TB_distance,
-                TB_displacement,
-                #dTB_speedAvg,
-                #dTB_speedMax,
-                #dTB_distance,
-                #Jaw_speedAvg,
-                #Jaw_speedMax,
-                ) %>%
+  dplyr::select(
+    DatabaseID:duration,
+    acoDistance,
+    kinDistance,
+    F2_Slope,
+    TB_speedAvg,
+    TB_speedMax,
+    TB_distance,
+    TB_displacement,
+    #dTB_speedAvg,
+    #dTB_speedMax,
+    #dTB_distance,
+    Jaw_distance
+    #Jaw_speedAvg,
+    #Jaw_speedMax,
+  ) %>%
+  dplyr::mutate(
+    kinSpeed = kinDistance / duration,
+    Sent = case_when(
+      grepl("bsent", phrase) ~ "bsent",
+      grepl("tsent", phrase) ~ "tsent",
+      grepl("ksent", phrase) ~ "ksent"
+    )
+  ) %>%
   base::merge(., speakers) %>%
-  dplyr::mutate(rep = base::sub(pattern = ".*[.]",
-                                     replacement = "",
-                                     x = phrase),
-                  rep = as.numeric(rep) + 1,
-                  rep = case_when(
-                    is.na(rep) ~ 1,
-                    TRUE ~ rep,
-                  )) %>%
+  dplyr::mutate(
+    rep = base::sub(
+      pattern = ".*[.]",
+      replacement = "",
+      x = phrase
+    ),
+    rep = as.numeric(rep) + 1,
+    rep = case_when(is.na(rep) ~ 1, TRUE ~ rep, )
+  ) %>%
   dplyr::relocate(StudyID:Age, .after = DatabaseID) %>%
   base::merge(., listenerRatings, all = T) %>%
   dplyr::relocate(rep, .after = phrase) %>%
+  dplyr::relocate(Sent, .after = phrase) %>%
   dplyr::relocate(condition, .after = Group) %>%
   
   # Removing instances of "-Inf" and replacing it with NA
   dplyr::mutate(
-    TB_speedMax = ifelse(TB_speedMax == "-Inf",NA,TB_speedMax),
+    TB_speedMax = ifelse(TB_speedMax == "-Inf", NA, TB_speedMax),
     #dTB_speedMax = ifelse(dTB_speedMax == "-Inf",NA,dTB_speedMax),
-    TB_distance = ifelse(TB_distance == 0,NA,TB_distance),
+    TB_distance = ifelse(TB_distance == 0, NA, TB_distance),
     #dTB_distance = ifelse(dTB_distance == 0,NA,dTB_distance),
-    ) %>%
+  ) %>%
   
   # Removing an outlier for TB_speedMax
-  dplyr::mutate(TB_speedMax = ifelse(TB_speedMax > 600,NA,TB_speedMax)) %>%
+  dplyr::mutate(TB_speedMax = ifelse(TB_speedMax > 600, NA, TB_speedMax)) %>%
   
   # Removing instances of empty rows
   dplyr::filter(!is.na(onset))
 
-  rio::export(x = aiMeasures, file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
+rio::export(x = aiMeasures, file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
   
 # VSA Measures ----
   vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_VSA.csv") %>%

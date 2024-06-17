@@ -9,28 +9,30 @@ rm(list = ls())
 # Packages
 ```{r}
 library(tidyverse) # install.packages('tidyverse')
+library(robustlmm) # install.packages("robustlmm")
 library(emmeans)
 library(ggpubr) # install.packages('ggpubr')
 library(plyr) # install.packages('plyr')
 library(beepr) # install.packages('beepr')
 library(plotrix) # install.packages('plotrix')
-source('Functions/MSL Tools.R')
+library(glmmTMB) # install.packages('glmmTMB')
+source('../Functions/MSL Tools.R')
 ```
 
 # Load Data
 ```{r}
-fileInventories <- rio::import(file = "Data/RawData/File Inventories.xlsx") %>%
+fileInventories <- rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
   dplyr::rename(DatabaseID = `Sub #`,
                 dxTime = `Time Since Diagnosis`) %>%
   dplyr::select(DatabaseID, dxTime, MoCA)
 
-listenerRatings <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::filter(ratingType == "Int") %>%
   dplyr::filter(condition == "conv") %>%
   dplyr::group_by(DatabaseID, StudyID) %>%
   dplyr::summarise(Rating_M = mean(Rating, na.rm = T))
 
-speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
+speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
   dplyr::select(!`Folder 2`:`Sentence Repetition`) %>%
   base::merge(., fileInventories) %>%
   base::merge(., listenerRatings) %>%
@@ -66,7 +68,7 @@ speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
 
 ## Listener Descriptions
 ```{r}
-listenerRatings <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv")
+listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv")
 
 ratingCount <- listenerRatings %>%
   dplyr::group_by(StudyID, ratingType) %>%
@@ -81,7 +83,7 @@ ratingCount %>%
 
 NROW(unique(listenerRatings$ListenerID))
 
-listenerDemo <- rio::import(file = "Data/PreppedData/ListenerData/ListenerDemographics.csv")
+listenerDemo <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerDemographics.csv")
 NROW(unique(listenerDemo$ListenerID))
 
 # Age and N
@@ -422,7 +424,7 @@ dir.create(path = "Models/",showWarnings = F)
 ## Perceptual Measures
 ### 1. Intelligibility
 ```{r}
-perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+perceptualMeasures <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!V1) %>%
   dplyr::filter(ratingType == "Int") %>%
   dplyr::rename(Int = Rating) %>%
@@ -432,7 +434,8 @@ perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/Listener
                                               "moreClear",
                                               "lessClear")))
 
-modelData <- perceptualMeasures
+modelData <- perceptualMeasures %>%
+  dplyr::filter(condition == "conv")
 
 # Taking out the trash
 rm(perceptualMeasures)
@@ -441,10 +444,11 @@ rm(perceptualMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-Int_m0 <- lmerTest::lmer(Int ~ 1 +
-                           (1 | ListenerID) +
-                           (1 | StudyID),
-                         data = modelData)
+Int_m0 <- robustlmm::glmmTMB(Int ~ 1 +
+                             (1 | ListenerID) +
+                             (1 | StudyID),
+                           family = tweedie(link = "log"),
+                           data = modelData)
 # Model summary
 summary(Int_m0)
 
@@ -453,6 +457,13 @@ summary(Int_m0)
 M1 - Condition
 ```{r}
 # Building the model
+Int_m1 <- robustlmm::rlmer(Int ~ Group * condition +
+                             (1 | ListenerID) +
+                             (1 | StudyID),
+                           data = modelData)
+summary(Int_m1)
+sjPlot::tab_model(Int_m1)
+
 Int_m1 <- lmerTest::lmer(Int ~ condition +
                            (1 | ListenerID) +
                            (1 | StudyID),
@@ -513,9 +524,8 @@ rm(modelData)
 
 ### 2. Articulatory Precision
 ```{r}
-perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+perceptualMeasures <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::select(!V1) %>%
-  #dplyr::filter(condition == "conv") %>%
   dplyr::filter(ratingType == "AP") %>%
   dplyr::rename(AP = Rating) %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
@@ -523,6 +533,8 @@ perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/Listener
                                    levels = c("conv",
                                               "moreClear",
                                               "lessClear")))
+
+hist(perceptualMeasures$AP)
 
 modelData <- perceptualMeasures
 
@@ -608,25 +620,43 @@ rm(modelData)
 
 ### 3. aVSA
 ```{r}
-vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  #dplyr::filter(condition == "conv") %>%
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::filter(DatabaseID != "Sub26") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
                 condition = factor(condition,
                                    levels = c("conv",
                                               "moreClear",
                                               "lessClear")),
-                aVSA = aVSA/1000)
+                aVSA = aVSA/1000) %>%
+  base::merge(.,
+              speakerList %>%
+                dplyr::select(StudyID, Severity))
 
 modelData <- vsaMeasures
+hist(modelData$aVSA)
+performance::check_distribution(modelData$aVSA)
 
 # Taking out the trash
 rm(vsaMeasures)
 ```
+#### individual plot
+```{r}
+modelData %>%
+  dplyr::filter(condition == "conv") %>%
+  ggplot() +
+  aes(x = Severity,
+      y = aVSA,
+      #group = StudyID,
+      color = Group) +
+  geom_boxplot()
+  
+```
+
 
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-aVSA_m0 <- lmerTest::lmer(aVSA ~ 1 +
+aVSA_m0 <- lmerTest::lmer(log(aVSA) ~ 1 +
                        (1 | StudyID),
                      data = modelData)
 
@@ -638,7 +668,7 @@ summary(aVSA_m0)
 M1 - Condition
 ```{r}
 # Building the model
-aVSA_m1 <- lmerTest::lmer(aVSA ~ condition +
+aVSA_m1 <- lmerTest::lmer(log(aVSA) ~ condition +
                        (1 | StudyID),
                      data = modelData)
 # Model summary
@@ -651,7 +681,7 @@ anova(aVSA_m0, aVSA_m1)
 M2 - Condition*Group
 ```{r}
 # Building the model
-aVSA_m2 <- lmerTest::lmer(aVSA ~ condition*Group +
+aVSA_m2 <- lmerTest::lmer(log(aVSA) ~ condition*Group +
                        (1 | StudyID),
                      data = modelData)
 # Model summary
@@ -691,8 +721,8 @@ rm(modelData)
 ```
 ### 4. Aco Distance
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  #dplyr::filter(condition == "conv") %>%
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::filter(DatabaseID != "Sub26") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
                 condition = factor(condition,
                                    levels = c("conv",
@@ -701,6 +731,9 @@ aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_a
 
 modelData <- aiMeasures
 
+hist(modelData$acoDistance)
+performance::check_distribution(modelData$acoDistance)
+
 # Taking out the trash
 rm(aiMeasures)
 ```
@@ -708,8 +741,9 @@ rm(aiMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-acoDistance_m0 <- lmerTest::lmer(acoDistance ~ 1 +
-                           (1 | StudyID),
+acoDistance_m0 <- glmmTMB::glmmTMB(acoDistance ~ 1 +
+                                     (1 | StudyID),
+                                   family = Gamma(link = "log"),
                          data = modelData)
 # Model summary
 summary(acoDistance_m0)
@@ -719,11 +753,12 @@ summary(acoDistance_m0)
 M1 - Condition
 ```{r}
 # Building the model
-acoDistance_m1 <- lmerTest::lmer(acoDistance ~ condition +
-                           (1 | StudyID),
+acoDistance_m1 <- lmerTest::lmer(log(acoDistance) ~ Group + condition +
+                                     (1 | StudyID),
                          data = modelData)
 # Model summary
 summary(acoDistance_m1)
+anova(acoDistance_m1)
 
 # Perform likelihood ratio test
 anova(acoDistance_m0, acoDistance_m1)
@@ -732,9 +767,12 @@ anova(acoDistance_m0, acoDistance_m1)
 M2 - condition*Group
 ```{r}
 # Building the model
-acoDistance_m2 <- lmerTest::lmer(acoDistance ~ condition*Group +
-                           (1 | StudyID),
-                         data = modelData)
+acoDistance_m2 <- glmmTMB::glmmTMB(
+  acoDistance ~ Group + Sex +
+    (1 | StudyID),
+  family = Gamma(link = "log"),
+  data = modelData
+)
 # Model summary
 summary(acoDistance_m2)
 
@@ -773,7 +811,7 @@ rm(modelData)
 
 ### 5. F2 Slope
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
                 condition = factor(condition,
                                    levels = c("conv",
@@ -782,6 +820,9 @@ aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_a
 
 modelData <- aiMeasures
 
+hist(modelData$F2_Slope)
+performance::check_distribution(modelData$F2_Slope)
+
 # Taking out the trash
 rm(aiMeasures)
 ```
@@ -789,7 +830,7 @@ rm(aiMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-F2_Slope_m0 <- lmerTest::lmer(F2_Slope ~ 1 +
+F2_Slope_m0 <- lmerTest::lmer(log(F2_Slope) ~ 1 +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -800,7 +841,7 @@ summary(F2_Slope_m0)
 M1 - condition
 ```{r}
 # Building the model
-F2_Slope_m1 <- lmerTest::lmer(F2_Slope ~ condition +
+F2_Slope_m1 <- lmerTest::lmer(log(F2_Slope) ~ condition +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -812,11 +853,12 @@ anova(F2_Slope_m0, F2_Slope_m1)
 M2 - condition*Group
 ```{r}
 # Building the model
-F2_Slope_m2 <- lmerTest::lmer(F2_Slope ~ condition*Group +
+F2_Slope_m2 <- lmerTest::lmer(log(F2_Slope) ~ condition*Group +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
 summary(F2_Slope_m2)
+anova(F2_Slope_m2)
 
 # Perform likelihood ratio test
 anova(F2_Slope_m1, F2_Slope_m2)
@@ -826,11 +868,12 @@ anova(F2_Slope_m1, F2_Slope_m2)
 M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-F2_Slope_m3 <- lmerTest::lmer(F2_Slope ~ condition*Group*Sex +
+F2_Slope_m3 <- lmerTest::lmer(log(F2_Slope) ~ condition*Group*Sex +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
 summary(F2_Slope_m3)
+anova(F2_Slope_m3)
 
 # Perform likelihood ratio test
 anova(F2_Slope_m2, F2_Slope_m3)
@@ -857,7 +900,7 @@ rm(modelData)
 ### 6. kVSA
 
 ```{r}
-vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv")  %>%
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv")  %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
                 condition = factor(condition,
                                    levels = c("conv",
@@ -866,6 +909,9 @@ vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_
 
 modelData <- vsaMeasures
 
+hist(modelData$kVSA)
+performance::check_distribution(modelData$kVSA)
+
 # Taking out the trash
 rm(vsaMeasures)
 ```
@@ -873,7 +919,7 @@ rm(vsaMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-kVSA_m0 <- stats::lm(kVSA ~ 1,
+kVSA_m0 <- stats::lm(log(kVSA) ~ 1,
                      data = modelData)
 # Model summary
 summary(kVSA_m0)
@@ -883,7 +929,7 @@ summary(kVSA_m0)
 M1 - Group
 ```{r}
 # Building the model
-kVSA_m1 <- stats::lm(kVSA ~ condition,
+kVSA_m1 <- stats::lm(log(kVSA) ~ condition,
                          data = modelData)
 # Model summary
 summary(kVSA_m1)
@@ -894,7 +940,7 @@ anova(kVSA_m0, kVSA_m1)
 M2 - Condition*Group
 ```{r}
 # Building the model
-kVSA_m2 <- stats::lm(kVSA ~ condition*Group,
+kVSA_m2 <- stats::lm(log(kVSA) ~ condition*Group,
                          data = modelData)
 # Model summary
 summary(kVSA_m2)
@@ -906,7 +952,7 @@ anova(kVSA_m1, kVSA_m2)
 M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-kVSA_m3 <- lmerTest::lmer(kVSA ~ condition*Group*Sex +
+kVSA_m3 <- lmerTest::lmer(log(kVSA) ~ condition*Group*Sex +
                             (1|StudyID),
                          data = modelData)
 # Model summary
@@ -935,7 +981,7 @@ rm(modelData)
 
 ### 7. Kin Distance
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
                 condition = factor(condition,
                                    levels = c("conv",
@@ -944,6 +990,9 @@ aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_a
 
 modelData <- aiMeasures
 
+hist(modelData$kinDistance)
+performance::check_distribution(modelData$kinDistance)
+
 # Taking out the trash
 rm(aiMeasures)
 ```
@@ -951,7 +1000,7 @@ rm(aiMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-kinDistance_m0 <- lmerTest::lmer(kinDistance ~ 1 +
+kinDistance_m0 <- lmerTest::lmer(log(kinDistance) ~ 1 +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -962,7 +1011,7 @@ summary(kinDistance_m0)
 M1 - Condition
 ```{r}
 # Building the model
-kinDistance_m1 <- lmerTest::lmer(kinDistance ~ condition +
+kinDistance_m1 <- lmerTest::lmer(log(kinDistance) ~ condition +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -975,7 +1024,7 @@ anova(kinDistance_m0, kinDistance_m1)
 M2 - Condition*Group
 ```{r}
 # Building the model
-kinDistance_m2 <- lmerTest::lmer(kinDistance ~ condition*Group +
+kinDistance_m2 <- lmerTest::lmer(log(kinDistance) ~ condition*Group + Int_M +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -988,11 +1037,12 @@ anova(kinDistance_m1, kinDistance_m2)
 M3 - Condition*Group*Sex
 ```{r}
 # Building the model
-kinDistance_m3 <- lmerTest::lmer(kinDistance ~ condition*Group*Sex +
+kinDistance_m3 <- lmerTest::lmer(log(kinDistance) ~ condition*Group*Sex +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
 summary(kinDistance_m3)
+anova(kinDistance_m3)
 
 # Perform likelihood ratio test
 anova(kinDistance_m2, kinDistance_m3)
@@ -1018,14 +1068,17 @@ rm(modelData)
 
 ### 8. TB Speed Max
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
                 condition = factor(condition,
                                    levels = c("conv",
                                               "moreClear",
-                                              "lessClear")))
+                                              "lessClear"))) %>%
+  dplyr::filter(condition != "lessClear")
 
 modelData <- aiMeasures
+hist(modelData$kinSpeed)
+performance::check_distribution(modelData$kinSpeed)
 
 # Taking out the trash
 rm(aiMeasures)
@@ -1034,7 +1087,7 @@ rm(aiMeasures)
 M0 - Fully unconditional model
 ```{r}
 # Building the model
-TB_speedMax_m0 <- lmerTest::lmer(TB_speedMax ~ 1 +
+TB_speedMax_m0 <- lmerTest::lmer(log(kinSpeed) ~ 1 +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1045,7 +1098,7 @@ summary(TB_speedMax_m0)
 M1 - Condition
 ```{r}
 # Building the model
-TB_speedMax_m1 <- lmerTest::lmer(TB_speedMax ~ condition +
+TB_speedMax_m1 <- lmerTest::lmer(log(kinSpeed) ~ condition +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1058,7 +1111,7 @@ anova(TB_speedMax_m0, TB_speedMax_m1)
 M2 - Condition*Group
 ```{r}
 # Building the model
-TB_speedMax_m2 <- lmerTest::lmer(TB_speedMax ~ condition*Group +
+TB_speedMax_m2 <- lmerTest::lmer(log(kinSpeed) ~ condition*Group +
                            (1 | StudyID),
                          data = modelData)
 # Model summary
@@ -1097,6 +1150,73 @@ rm(list=ls(pattern="^emms"))
 rm(modelData)
 ```
 
+### 9. Jaw Distance
+```{r}
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")  %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
+                condition = factor(condition,
+                                   levels = c("conv",
+                                              "moreClear",
+                                              "lessClear")))
+modelData <- aiMeasures
+hist(modelData$Jaw_distance)
+performance::check_distribution(modelData$Jaw_distance)
+
+# Taking out the trash
+rm(aiMeasures)
+```
+M0 - Fully unconditional model
+```{r}
+# Building the model
+kinDistance_m0 <- lmerTest::lmer(kinDistance ~ 1 +
+                           (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(kinDistance_m0)
+
+```
+
+M1 - Condition
+```{r}
+# Building the model
+kinDistance_m1 <- lmerTest::lmer(Jaw_distance ~ condition +
+                           (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(kinDistance_m1)
+
+# Perform likelihood ratio test
+anova(kinDistance_m0, kinDistance_m1)
+
+```
+M2 - Condition*Group
+```{r}
+# Building the model
+kinDistance_m2 <- lmerTest::lmer(Jaw_distance ~ condition*Group +
+                           (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(kinDistance_m2)
+anova(kinDistance_m2)
+
+# Perform likelihood ratio test
+anova(kinDistance_m1, kinDistance_m2)
+```
+
+M3 - Condition*Group*Sex
+```{r}
+# Building the model
+kinDistance_m3 <- lmerTest::lmer(Jaw_distance ~ condition*Group*Sex +
+                           (1 | StudyID),
+                         data = modelData)
+# Model summary
+summary(kinDistance_m3)
+anova(kinDistance_m3)
+
+# Perform likelihood ratio test
+anova(kinDistance_m2, kinDistance_m3)
+
+```
 
 # Plots - Condition
 ```{r}
@@ -1110,7 +1230,7 @@ color_PD <- myPal[6]
 model <- base::readRDS("Study-1/Models/Int_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -1237,7 +1357,7 @@ plot_Int
 model <- base::readRDS("Study-1/Models/AP_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -1363,7 +1483,7 @@ plot_AP
 model <- base::readRDS("Study-1/Models/aVSA_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -1478,7 +1598,7 @@ plot_aVSA
 model <- base::readRDS("Study-1/Models/acoDistance_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -1641,7 +1761,7 @@ plot_acoDistance
 model <- base::readRDS("Study-1/Models/F2_Slope_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -1803,7 +1923,7 @@ plot_F2_Slope
 model <- base::readRDS("Study-1/Models/kVSA_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -1887,7 +2007,7 @@ plot_kVSA
 model <- base::readRDS("Study-1/Models/kinDistance_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -2049,7 +2169,7 @@ plot_kinDistance
 model <- base::readRDS("Study-1/Models/TB_speedMax_finalModel.rds") %>%
   sjPlot::plot_model(type = "int")
 
-plotData <- model[[4]][["data"]] %>%
+plotData <- model[[4]][["../Data"]] %>%
   as.data.frame() %>%
   dplyr::mutate(
     condition = factor(x,
@@ -2177,11 +2297,11 @@ plot_s2_perceptual <- ggarrange(plot_Int,plot_AP,
                                 legend = "bottom")
 plot_s2_perceptual
 
-dir.create(path = "Data/Plots/Results",
+dir.create(path = "../Data/Plots/Results",
            showWarnings = F)
 ggsave(filename = "Results_perceptual.png",
        plot = plot_s2_perceptual,
-       path = "Data/Plots/Results",
+       path = "../Data/Plots/Results",
        height = 3.3,
        width = 6.5,
        scale = 1,
@@ -2199,11 +2319,11 @@ plot_s2_acoustic <- plot_aVSA + patchwork::plot_spacer() + plot_acoDistance +
       )
 plot_s2_acoustic
 
-dir.create(path = "Data/Plots/Results",
+dir.create(path = "../Data/Plots/Results",
            showWarnings = F)
 ggsave(filename = "Results_acoustic.png",
        plot = plot_s2_acoustic,
-       path = "Data/Plots/Results",
+       path = "../Data/Plots/Results",
        height = 5,
        width = 6.5,
        scale = 1)
@@ -2220,11 +2340,11 @@ plot_s2_kinematic <- plot_kVSA + patchwork::plot_spacer() + plot_kinDistance +
       )
 plot_s2_kinematic
 
-dir.create(path = "Data/Plots/Results",
+dir.create(path = "../Data/Plots/Results",
            showWarnings = F)
 ggsave(filename = "Results_kinematic.png",
        plot = plot_s2_kinematic,
-       path = "Data/Plots/Results",
+       path = "../Data/Plots/Results",
        height = 5,
        width = 6.5,
        scale = 1)
@@ -2244,7 +2364,7 @@ myPal_2 <- myPal[3]
 myPal_3 <- myPal[5]
 
 
-perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+perceptualMeasures <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::rename(Measure = ratingType,
                 Value = Rating) %>%
   dplyr::group_by(condition, Measure) %>%
@@ -2254,7 +2374,7 @@ perceptualMeasures <- rio::import(file = "Data/PreppedData/ListenerData/Listener
   dplyr::ungroup() %>%
   dplyr::mutate(Domain = "Perceptual")
 
-vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F")),
                 aVSA = aVSA/1000) %>%
   tidyr::pivot_longer(cols = aVSA:kVSA,
@@ -2270,7 +2390,7 @@ vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_
     Measure == "kVSA" ~ "Kinematic",
   ))
 
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
   dplyr::mutate(Sex = factor(Sex, levels = c("M","F"))) %>%
   tidyr::pivot_longer(cols = c(acoDistance, kinDistance,
                                F2_Slope, dTB_speedMax, Jaw_speedMax),
@@ -2356,7 +2476,7 @@ variabilityMeasures %>%
 
 ggsave(plot = last_plot(),
        filename = "S2_MeasureVariability.png",
-       path = "Data/Plots/Results",
+       path = "../Data/Plots/Results",
        height = 5,
        width = 4,
        units = "in",
@@ -2369,7 +2489,7 @@ ggsave(plot = last_plot(),
 library(rcartocolor) # install.packages('rcartocolor')
 myPal <- rcartocolor::carto_pal(n = 11, name = "Geyser")[c(2, 3, 4, 5)]
 
-vowels <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+vowels <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
   dplyr::filter(phrase == "bsent") %>%
   dplyr::group_by(DatabaseID, Group, condition, phrase) %>%
   dplyr::mutate(time = time - min(time),
@@ -2481,7 +2601,7 @@ phraseBoundaries %>%
 
 ggsave(filename = "S2_Relative Vowel Duations.png",
        plot = last_plot(),
-       path = "Data/Plots/Results",
+       path = "../Data/Plots/Results",
        height = 4,
        width = 6,
        scale = .9)
@@ -2496,9 +2616,9 @@ color_HC <- myPal[2]
 color_PD <- myPal[6]
 
 # Load in the Data
-speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv")
+speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv")
 
-plotData <- utils::read.csv(file = "Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
+plotData <- utils::read.csv(file = "../Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
   dplyr::select(!1) %>%
   dplyr::group_by(DatabaseID, ratingType, condition) |>
   dplyr::summarise(M = mean(M, na.rm = T)) %>%
@@ -2586,7 +2706,7 @@ plot_IntAP <- plotData %>%
 plot_IntAP
 
 
-ggplot2::ggsave("Data/Plots/Results/S2_avgRatings.png",
+ggplot2::ggsave("../Data/Plots/Results/S2_avgRatings.png",
                 plot = last_plot(),
                 height = 6,
                 width = 6.5,
@@ -2598,7 +2718,7 @@ rm(plotData, segmentData, pointData, speakerList)
 # Motor Equivilance Plot
 PDM04 - PDM06
 ```{r}
-aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
+aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
 
 speakers <- aiMeasures %>%
   dplyr::select(StudyID, Sex, Group, Age) %>%
@@ -2662,7 +2782,7 @@ speaker2 <- targetContrastPair %>%
   dplyr::filter(row_number() == 2)
 
 # Acoustic Data
-acousticSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+acousticSegments <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
   dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
                                                             speaker1$onset,
                                                             speaker1$offset) |
@@ -2687,7 +2807,7 @@ plot_acousticSegment <- acousticSegments %>%
 plot_acousticSegment
 
 # Movement Data
-movementSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+movementSegments <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
   dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
                                                             speaker1$onset,
                                                             speaker1$offset) |
@@ -2729,7 +2849,7 @@ speaker2 <- targetContrastPair %>%
 
 
 # Acoustic Data
-acousticSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+acousticSegments <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
   dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
                                                             speaker1$onset,
                                                             speaker1$offset) |
@@ -2737,7 +2857,7 @@ acousticSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeaker
                                                             speaker2$onset,
                                                             speaker2$offset))
 # Movement Data
-movementSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+movementSegments <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
   dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
                                                             speaker1$onset,
                                                             speaker1$offset) |
@@ -2789,7 +2909,7 @@ speaker2 <- targetContrastPair %>%
   dplyr::filter(row_number() == 2)
 
 # Acoustic Data
-acousticSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
+acousticSegments <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_AcousticSegments.csv") %>%
   dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
                                                             speaker1$onset,
                                                             speaker1$offset) |
@@ -2814,7 +2934,7 @@ plot_acousticSegment <- acousticSegments %>%
 plot_acousticSegment
 
 # Movement Data
-movementSegments <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
+movementSegments <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_MovementSegments.csv") %>%
   dplyr::filter(DatabaseID == speaker1$DatabaseID & between(time,
                                                             speaker1$onset,
                                                             speaker1$offset) |
@@ -2879,10 +2999,10 @@ myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
 color_HC <- myPal[2] 
 color_PD <- myPal[6]
 
-speakers <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
+speakers <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
   dplyr::select(DatabaseID:Sex)
 
-vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
+vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
   dplyr::select(DatabaseID, Group, condition, label,
                 F1_tempMid, F2_tempMid,
                 TB_x_tempMid, TB_y_tempMid) %>%
@@ -2904,7 +3024,7 @@ vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tem
                                "Male Speakers",
                                "Female Speakers"
                              )))
-variability_xyCoords <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
+variability_xyCoords <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
   dplyr::select(DatabaseID, Group, condition, label,
                 F1_tempMid, F2_tempMid,
                 TB_x_tempMid, TB_y_tempMid) %>%
@@ -2995,7 +3115,7 @@ vsaComparisons <- aVSA + kVSA +
 vsaComparisons
 
 ggsave(filename = "S1_vsaComparison.png",
-       path = "Data/Plots/Results/",
+       path = "../Data/Plots/Results/",
        plot = vsaComparisons,
        height = 3.5,
        width = 3,
@@ -3181,7 +3301,7 @@ table_groupDiff %>%
   ) %>%
   gt::cols_hide(columns = c(sig_M,sig_F)) %>%
   gt::tab_options(row_group.as_column = TRUE)  %>%
-  gt::gtsave(filename = "Data/Tables/Supplemental Info_Group Contrasts.html")
+  gt::gtsave(filename = "../Data/Tables/Supplemental Info_Group Contrasts.html")
 ```
 
 ### Condition Contrasts
@@ -3286,7 +3406,7 @@ table_conditionDiff %>%
   ) %>%
   gt::cols_hide(columns = c(sig_M,sig_F)) %>%
   gt::tab_options(row_group.as_column = TRUE) %>%
-  gt::gtsave(filename = "Data/Tables/Supplemental Info_Condition Contrasts.html")
+  gt::gtsave(filename = "../Data/Tables/Supplemental Info_Condition Contrasts.html")
   
 ```
 

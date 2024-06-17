@@ -14,89 +14,676 @@ library(webshot2) # install.packages('webshot2')
 dir.create(path = "Study-2/Tables", showWarnings = F)
 ```
 
-## Table 2 - VSA Models
+## Table 2 - ICC values
 ```{r}
-Int_VSA_finalModel <- base::readRDS(file = "Models/Int_VSA_finalModel.rds")
-AP_VSA_finalModel <- base::readRDS(file = "Models/AP_VSA_finalModel.rds")
+iccTable <- rio::import(file = "../Data/PreppedData/Reliability/ICC data.csv") %>%
+  gt::gt() %>%
+  gt::tab_spanner(columns = c("inter_ICC",
+                              "inter_lbound",
+                              "inter_ubound"),
+                  label = "Inter-measurer") %>%
+  gt::tab_spanner(columns = c("intra_ICC",
+                              "intra_lbound",
+                              "intra_ubound"),
+                  label = "Intra-measurer")
+
+
+gt::gtsave(data = iccTable,
+           filename = "Tables/Table 2_Reliability.html")
+```
+
+## Table 3 - Point-Based Spatial Measures
+```{r}
+Int_PBS <-
+  base::readRDS(file = "Models/Int_PBS.rds")
+AP_PBS <-
+  base::readRDS(file = "Models/AP_PBS.rds")
 
 sjPlot::tab_model(
-  Int_VSA_finalModel,
-  AP_VSA_finalModel,
+  Int_PBS,
+  AP_PBS,
   dv.labels = c("Intelligibility", "Articulatory Precision"),
-  file = "Tables/Table 2_VSA Final Model Table.html"
+  file = "Tables/Table 3_Point-Based Spatial Measures Model Table.html"
 )
 ```
 
-## Table 3 - Diphthong Models
+
+## Table 4 - Transition-Based Spatial Measures
 ```{r}
-Int_ai_finalModel <- base::readRDS(file = "Models/Int_ai_finalModel.rds")
-AP_ai_finalModel <- base::readRDS(file = "Models/AP_ai_finalModel.rds")
+Int_TBS <-
+  base::readRDS(file = "Models/Int_TBS.rds")
+AP_TBS <-
+  base::readRDS(file = "Models/AP_TBS.rds")
 
 sjPlot::tab_model(
-  Int_ai_finalModel,
-  AP_ai_finalModel,
+  Int_TBS,
+  AP_TBS,
   pred.labels = c("(Intercept)", "Kinematic Distance", "Sex [F]"),
   dv.labels = c("Intelligibility", "Articulatory Precision"),
-  file = "Tables/Table 3_Diphthong Final Model Table.html"
+  file = "Tables/Table 4_Transition-Based Spatial Measures Model Table.html"
+)
+```
+
+## Table 5 - Spatiotemporal Measures
+```{r}
+Int_SpaTemp <-
+  base::readRDS(file = "Models/Int_SpaTemp.rds")
+AP_SpaTemp <-
+  base::readRDS(file = "Models/AP_SpaTemp.rds")
+
+sjPlot::tab_model(
+  Int_SpaTemp,
+  AP_SpaTemp,
+  pred.labels = c("(Intercept)", "Sex [F]", "F2 Slope"),
+  dv.labels = c("Intelligibility", "Articulatory Precision"),
+  file = "Tables/Table 5_Spatiotemporal Measures Model Table.html"
 )
 ```
 
 # Supplemental Info
-## Table S1 - Int ~ VSA Model Building
+## Table S1 - HC Speaker Demo
 ```{r}
+fileInventories <- rio::import("../Data/RawData/File Inventories.xlsx") %>%
+  dplyr::select(DatabaseID = `Sub #`,
+                Group,
+                Sex,
+                Age,
+                dxTime = `Time Since Diagnosis`,
+                MoCA)
 
+listenerRatings <- rio::import(
+  file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv"
+) %>%
+  dplyr::filter(condition == "conv") %>%
+  dplyr::group_by(DatabaseID, StudyID) %>%
+  dplyr::summarise(Rating_M = mean(Int_M, na.rm = T))
+
+speakerList <-
+  rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+  dplyr::select(!`Folder 2`:`Sentence Repetition`) %>%
+  base::merge(., fileInventories) %>%
+  base::merge(., listenerRatings) %>%
+  
+  # Making sure dxTime is numeric
+  dplyr::mutate(dxTime = as.numeric(dxTime)) %>%
+  
+  # Refactoring Sex
+  dplyr::mutate(Sex = factor(
+    Sex,
+    levels = c("M",
+               "F"),
+    labels = c("Male Speakers",
+               "Female Speakers")
+  )) %>%
+  
+  # Severity-surrogate ratings
+  dplyr::mutate(
+    Severity = case_when(
+      Group == "HC" ~ "",
+      Rating_M > 94 ~ "Normal",
+      between(Rating_M, 85, 94.99) ~ "Mild",
+      between(Rating_M, 70, 84.99) ~ "Moderate",
+      between(Rating_M, 45, 69.99) ~ "Severe",
+      Rating_M < 45 ~ "Profound"
+    )
+  ) %>%
+  
+  # Removing the MoCA Scores - Not all speakers had them
+  dplyr::select(!MoCA)
+
+# HC Speakers ----
+speakerList %>%
+  dplyr::filter(Group == "HC") %>%
+  dplyr::select(!DatabaseID) %>%
+  dplyr::arrange(StudyID) %>%
+  
+  # Creating the gt table
+  gt::gt(rowname_col = "StudyID",
+         groupname_col = "Sex") %>%
+  
+  # Title
+  gt::tab_header(title = "Table S1",
+                 subtitle = "Speaker demographics for the neurologically healthy control (HC) speaker group.") %>%
+  
+  # Replace missing values with blanks
+  gt::sub_missing(columns = everything(),
+                  rows = everything(),
+                  missing_text = "") %>%
+  
+  # Renaming columns
+  gt::cols_label(dxTime = "Time Since Diagnosis",
+                 Rating_M = "Intelligibility (%)",) %>%
+  
+  # Formatting the Intelligibility data
+  gt::fmt_number(columns = Rating_M,
+                 decimals = 2,) %>%
+  
+  # Adding summary rows
+  ## Male Speakers
+  gt::summary_rows(
+    groups = "Male Speakers",
+    columns = c(Age, Rating_M),
+    fns = list(
+      M = ~ mean(., na.rm = TRUE),
+      SD = ~ sd(., na.rm = TRUE)
+    ),
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
+  ) %>%
+  
+  ## Female Speakers
+  gt::summary_rows(
+    groups = "Female Speakers",
+    columns = c(Age, Rating_M),
+    fns = list(
+      M = ~ mean(., na.rm = TRUE),
+      SD = ~ sd(., na.rm = TRUE)
+    ),
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
+  ) %>%
+  
+  
+  # Adding footnote to Intelligibility
+  gt::tab_footnote(
+    footnote = "The reported intelligibility (%) scores are aggregated from the Visual Analog Scale (VAS) ratings made for conversational speech samples in the current study.",
+    locations = gt::cells_column_labels(columns = Rating_M)
+  ) %>%
+  
+  # Adding footnote to HCM02
+  gt::tab_footnote(
+    footnote = "The HCM02 speaker, while healthy and intelligible, had a Spanish accent that likely influenced his intelligibility ratings. Further discussion about this speaker and the implications for his intelligibility ratings can be found in the limitations section.",
+    locations = gt::cells_body(columns = Rating_M,
+                               rows = StudyID == "HCM02")
+  ) %>%
+  
+  # Adding footnote to HCM04
+  gt::tab_footnote(
+    footnote = "The HCM04 speaker, presented with a perceptually rough voice quality consistent with healthy aging. This voice quality likely influenced his intelligibility ratings.",
+    locations = gt::cells_body(columns = Rating_M,
+                               rows = StudyID == "HCM04")
+  ) %>%
+  
+  # Format groups
+  gt::tab_options(
+    row_group.as_column = FALSE,
+    table.font.size = 13,
+    data_row.padding = 0
+  ) %>%
+  
+  gt::cols_align(align = c("center"),
+                 columns = StudyID:Severity) %>%
+  
+  # Hiding time since diagnosis and severity
+  gt::cols_hide(columns = c(dxTime, Severity)) %>%
+  
+  # Saving the table
+  gt::gtsave(filename = "Tables/Table S1_SpeakerDemo_HC.html")
+```
+
+## Table S2 - PD Speaker Demo
+```{r}
+# PD Speakers ----
+speakerList %>%
+  dplyr::filter(Group == "PD") %>%
+  dplyr::select(!DatabaseID) %>%
+  dplyr::arrange(StudyID) %>%
+  
+  # Creating the gt table
+  gt::gt(rowname_col = "StudyID",
+         groupname_col = "Sex") %>%
+  
+  # Title
+  gt::tab_header(title = "Table S2",
+                 subtitle = "Speaker demographics for the Parkinson’s (PD) speaker group.") %>%
+  
+  # Replace missing values with blanks
+  gt::sub_missing(columns = everything(),
+                  rows = everything(),
+                  missing_text = "") %>%
+  
+  # Renaming columns
+  gt::cols_label(dxTime = "Time Since Diagnosis (Years)",
+                 Rating_M = "Intelligibility (%)",) %>%
+  
+  # Formatting the Intelligibility data
+  gt::fmt_number(columns = Rating_M,
+                 decimals = 2,) %>%
+  
+  # Formatting the dxTime data
+  gt::fmt_number(columns = dxTime,
+                 decimals = 0,) %>%
+  
+  # Adding summary rows
+  ## Male Speakers
+  gt::summary_rows(
+    groups = "Male Speakers",
+    columns = c(Age, dxTime, Rating_M),
+    fns = list(
+      M = ~ mean(., na.rm = TRUE),
+      SD = ~ sd(., na.rm = TRUE)
+    ),
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
+  ) %>%
+  
+  ## Female Speakers
+  gt::summary_rows(
+    groups = "Female Speakers",
+    columns = c(Age, dxTime, Rating_M),
+    fns = list(
+      M = ~ mean(., na.rm = TRUE),
+      SD = ~ sd(., na.rm = TRUE)
+    ),
+    fmt = list( ~ gt::fmt_number(., decimals = 2))
+  ) %>%
+  
+  # Adding footnote to Intelligibility
+  gt::tab_footnote(
+    footnote = "The reported intelligibility (%) scores are aggregated from the Visual Analog Scale (VAS) ratings made for conversational speech samples in the current study.",
+    locations = gt::cells_column_labels(columns = Rating_M)
+  ) %>%
+  
+  # Adding footnote to Severity
+  gt::tab_footnote(
+    footnote = "Severity labels were determined based on the intelligibility measures using the surrogate-severity measures outlined in Stipancic et al. (2022). Specifically, intelligibility values > 94% are `Normal`, 85% - 94% are `Mild`, 70% - 84% are `Moderate`, 45% - 69% are `Severe`, and < 45% are `Profound`.",
+    locations = gt::cells_column_labels(columns = Severity)
+  ) %>%
+  
+  # Format groups
+  gt::tab_options(
+    row_group.as_column = FALSE,
+    table.font.size = 13,
+    data_row.padding = 0
+  ) %>%
+  
+  gt::cols_align(align = c("center"),
+                 columns = StudyID:Severity) %>%
+  
+  # Saving the table
+  gt::gtsave(filename = "Tables/Table S2_SpeakerDemo_PD.html")
+
+```
+## Table S3 - Descriptives Table
+```{r}
+# Perceptual Measures ----
+perceptualMeasures <-
+  rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+  dplyr::select(!1) %>%
+  
+  # Selecting only the data we need
+  dplyr::select(DatabaseID, Group, Sex, condition, ratingType, Rating)
+
+## By Sex
+perceptualMeasures_bySex <- perceptualMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, Sex, condition, ratingType) %>%
+  dplyr::summarise(M = mean(Rating, na.rm = T),
+                   SD = sd(Rating, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),)
+
+## All Speakers
+perceptualMeasures_allSpeakers <- perceptualMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, condition, ratingType) %>%
+  dplyr::summarise(M = mean(Rating, na.rm = T),
+                   SD = sd(Rating, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),) %>%
+  
+  # Add "All Speakers" label to the Sex
+  dplyr::mutate(Sex = "All Speakers")
+
+
+perceptualMeasures <- base::rbind(perceptualMeasures_allSpeakers,
+                                  perceptualMeasures_bySex,
+                                  deparse.level = 1) %>%
+  dplyr::relocate(Sex, .before = ratingType) %>%
+  dplyr::rename(Measure = ratingType)
+
+# Removing the unneeded items
+rm(perceptualMeasures_allSpeakers,
+   perceptualMeasures_bySex)
+
+
+
+# VSA Measures ----
+vsaMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  
+  # Converting aVSA from Hz to kHz, to make table cleaner
+  dplyr::mutate(aVSA = aVSA / 1000) %>%
+  
+  # Selecting only the data we need
+  dplyr::select(DatabaseID:kVSA) %>%
+  
+  # Formatting for the table
+  tidyr::pivot_longer(cols = aVSA:kVSA,
+                      names_to = "Measure",
+                      values_to = "Value")
+
+## By Sex
+vsaMeasures_bySex <- vsaMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, Sex, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),)
+
+## All Speakers
+vsaMeasures_allSpeakers <- vsaMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),) %>%
+  
+  # Add "All Speakers" label to the Sex
+  dplyr::mutate(Sex = "All Speakers")
+
+vsaMeasures <- base::rbind(vsaMeasures_allSpeakers,
+                           vsaMeasures_bySex,
+                           deparse.level = 1) %>%
+  dplyr::relocate(Sex, .before = Measure)
+
+# Removing the unneeded items
+rm(vsaMeasures_allSpeakers,
+   vsaMeasures_bySex)
+
+# /ai/ Measures ----
+aiMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  
+  # Selecting only the data we need
+  dplyr::select(DatabaseID:Group,
+                condition,
+                acoDistance,
+                kinDistance,
+                F2_Slope,
+                kinSpeed) %>%
+  
+  # Formatting for the table
+  tidyr::pivot_longer(cols = acoDistance:kinSpeed,
+                      names_to = "Measure",
+                      values_to = "Value") %>%
+  dplyr::filter(!is.na(Value))
+
+## By sex
+aiMeasures_bySex <- aiMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, Sex, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),)
+
+## All Speakers
+aiMeasures_allSpeakers <- aiMeasures %>%
+  # Summarizing the measures by taking the average across groups
+  dplyr::group_by(Group, condition, Measure) %>%
+  dplyr::summarise(M = mean(Value, na.rm = T),
+                   SD = sd(Value, na.rm = T),) %>%
+  
+  # Pivoting the data back to wide for the table
+  tidyr::pivot_wider(names_from = c(Group, condition),
+                     values_from = c(M, SD),) %>%
+  
+  # Add "All Speakers" label to the Sex
+  dplyr::mutate(Sex = "All Speakers")
+
+aiMeasures <- base::rbind(aiMeasures_allSpeakers,
+                          aiMeasures_bySex,
+                          deparse.level = 1) %>%
+  dplyr::relocate(Sex, .before = Measure)
+
+
+# Removing the unneeded items
+rm(aiMeasures_allSpeakers,
+   aiMeasures_bySex)
+
+
+# All Measures ----
+descriptivesData <- base::rbind(perceptualMeasures,
+                                vsaMeasures,
+                                aiMeasures,
+                                deparse.level = 1) %>%
+  dplyr::mutate_at(vars(-c(Sex, Measure)), round, digits = 2) %>%
+  dplyr::mutate(
+    Measure = factor(
+      Measure,
+      levels = c(
+        "Int",
+        "AP",
+        "aVSA",
+        "acoDistance",
+        "F2_Slope",
+        "kVSA",
+        "kinDistance",
+        "kinSpeed"
+      ),
+      labels = c(
+        "Intelligibility (VAS)",
+        "Articulatory Precision (VAS)",
+        "Acoustic VSA (kHz\U00B2)",
+        "Acoustic Distance (Hz)",
+        "F2 Slope (Hz/ms)",
+        "Kinematic VSA (mm\U00B2)",
+        "Kinematic Distance (mm)",
+        "Kinematic Speed (mm/s)"
+      )
+    ),
+    Sex = factor(
+      Sex,
+      levels = c("All Speakers",
+                 "M",
+                 "F"),
+      labels = c("All Speakers",
+                 "Male Speakers",
+                 "Female Speakers")
+    )
+  ) %>%
+  dplyr::arrange(Measure) %>%
+  dplyr::select(
+    Sex,
+    Measure,
+    M_HC_conv,
+    SD_HC_conv,
+    M_PD_conv,
+    SD_PD_conv,
+    M_HC_lessClear,
+    SD_HC_lessClear,
+    M_PD_lessClear,
+    SD_PD_lessClear,
+    M_HC_moreClear,
+    SD_HC_moreClear,
+    M_PD_moreClear,
+    SD_PD_moreClear,
+  )
+
+# Creating the GT table
+descriptivesTable <- descriptivesData %>%
+  gt::gt(rowname_col = "Measure",
+         groupname_col = "Sex") %>%
+  # Title
+  #gt::tab_header(title = "Table S3",
+  #               subtitle = "The target measures across the speaking conditions, presented for male, female, and all speakers.") %>%
+  
+  
+  # Spanner 1: PD Speakers
+  gt::tab_spanner(
+    label = "PD",
+    level = 1,
+    gather = FALSE,
+    columns = c(
+      M_PD_conv,
+      SD_PD_conv,
+      M_PD_lessClear,
+      SD_PD_lessClear,
+      M_PD_moreClear,
+      SD_PD_moreClear
+    )
+  ) %>%
+  # Spanner 1: HC Speakers
+  gt::tab_spanner(
+    label = "HC",
+    level = 1,
+    gather = FALSE,
+    columns = c(
+      M_HC_conv,
+      SD_HC_conv,
+      M_HC_lessClear,
+      SD_HC_lessClear,
+      M_HC_moreClear,
+      SD_HC_moreClear
+    )
+  ) %>%
+  # Spanner 2: Conversational
+  gt::tab_spanner(
+    label = "Conversational",
+    level = 2,
+    gather = TRUE,
+    columns = c(M_HC_conv,
+                SD_HC_conv,
+                M_PD_conv,
+                SD_PD_conv)
+  ) %>%
+  # Spanner 2: Less Clear
+  gt::tab_spanner(
+    label = "Less Clear",
+    level = 2,
+    gather = TRUE,
+    columns = c(
+      M_HC_lessClear,
+      SD_HC_lessClear,
+      M_PD_lessClear,
+      SD_PD_lessClear
+    )
+  ) %>%
+  # Spanner 2: More Clear
+  gt::tab_spanner(
+    label = "More Clear",
+    level = 2,
+    gather = TRUE,
+    columns = c(
+      M_HC_moreClear,
+      SD_HC_moreClear,
+      M_PD_moreClear,
+      SD_PD_moreClear
+    )
+  ) %>%
+  gt::cols_label(
+    M_HC_conv = "M",
+    SD_HC_conv = "SD",
+    M_PD_conv = "M",
+    SD_PD_conv = "SD",
+    M_HC_lessClear = "M",
+    SD_HC_lessClear = "SD",
+    M_PD_lessClear = "M",
+    SD_PD_lessClear = "SD",
+    M_HC_moreClear = "M",
+    SD_HC_moreClear = "SD",
+    M_PD_moreClear = "M",
+    SD_PD_moreClear = "SD"
+  ) %>%
+  
+  # Align the measure labels to the right
+  gt::cols_align(align = c("right"),
+                 columns = Measure) %>%
+  
+  # Format groups
+  gt::tab_options(
+    row_group.as_column = FALSE,
+    table.font.size = 10,
+    column_labels.padding = 0,
+    data_row.padding = 5,
+    page.orientation = "landscape",
+    page.width = "11in",
+    page.height = "8.5in"
+  )
+
+# Save as .pdf
+gt::gtsave(data = descriptivesTable,
+           filename = "Tables/Table S3_descriptivesTable.html")
+
+
+```
+## Table S4 - Int ~ Point-Based Spatial Measures Model Building
+```{r}
 sjPlot::tab_model(
-  base::readRDS(file = "Models/Int_VSA_m1.rds"),
-  base::readRDS(file = "Models/Int_VSA_m2.rds"),
-  base::readRDS(file = "Models/Int_VSA_m4.rds"),
-  base::readRDS(file = "Models/Int_VSA_m5.rds"),
-  dv.labels = c("Model 1", "Model 2", "Model 3", "Final Model"),
+  base::readRDS(file = "Models/Int_PBS_m1.rds"),
+  base::readRDS(file = "Models/Int_PBS.rds"),
+  dv.labels = c("Model 1", "Final Model"),
   show.ci = F,
-  file = "Tables/Table S1_Int VSA Model.html"
+  file = "Tables/Table S4_Int PBS Model.html"
 )
 ```
 
 
-## Table S2 - Int ~ Diphthong Model Building
+## Table S5 - Int ~ Transition-Based Spatial Model Building
 ```{r}
 sjPlot::tab_model(
-  base::readRDS(file = "Models/Int_ai_m1.rds"),
-  base::readRDS(file = "Models/Int_ai_m2.rds"),
-  base::readRDS(file = "Models/Int_ai_m3.rds"),
-  base::readRDS(file = "Models/Int_ai_m4.rds"),
-  base::readRDS(file = "Models/Int_ai_m5.rds"),
-  base::readRDS(file = "Models/Int_ai_m7.rds"),
-  dv.labels = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5", "Final Model"),
+  base::readRDS(file = "Models/Int_TBS_m1.rds"),
+  base::readRDS(file = "Models/Int_TBS.rds"),
+  dv.labels = c("Model 1", "Final Model"),
   show.ci = F,
-  file = "Tables/Table S2_Int Diphthong Model.html"
+  file = "Tables/Table S5_Int TBS Model.html"
 )
 ```
 
-## Table S3 - AP ~ VSA Model Building
+## Table S6 - Int ~ Spatiotemporal Measure Model Building
 ```{r}
-
 sjPlot::tab_model(
-  base::readRDS(file = "Models/AP_VSA_m1.rds"),
-  base::readRDS(file = "Models/AP_VSA_m2.rds"),
-  base::readRDS(file = "Models/AP_VSA_m4.rds"),
-  base::readRDS(file = "Models/AP_VSA_m5.rds"),
-  dv.labels = c("Model 1", "Model 2", "Model 3", "Final Model"),
+  base::readRDS(file = "Models/Int_SpaTemp_m1.rds"),
+  base::readRDS(file = "Models/Int_SpaTemp_m2.rds"),
+  base::readRDS(file = "Models/Int_SpaTemp.rds"),
+  dv.labels = c("Model 1", "Model 2", "Final Model"),
   show.ci = F,
-  file = "Tables/Table S3_AP VSA Model.html"
+  p.threshold = c(0.008333333, 0.008333333, 0.008333333),
+ p.style = c("numeric"),
+  file = "Tables/Table S6_Int Spatiotemporal Model.html"
 )
 ```
 
-## Table S4 - AP ~ Diphthong Model Building
+## Table S7 - AP ~ Point-Based Spatial Measures Model Building
 ```{r}
 sjPlot::tab_model(
-  base::readRDS(file = "Models/AP_ai_m1.rds"),
-  base::readRDS(file = "Models/AP_ai_m2.rds"),
-  base::readRDS(file = "Models/AP_ai_m3.rds"),
-  base::readRDS(file = "Models/AP_ai_m4.rds"),
-  base::readRDS(file = "Models/AP_ai_m5.rds"),
-  base::readRDS(file = "Models/AP_ai_m7.rds"),
-  dv.labels = c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5", "Final Model"),
+  base::readRDS(file = "Models/AP_PBS_m1.rds"),
+  base::readRDS(file = "Models/AP_PBS.rds"),
+  dv.labels = c("Model 1", "Final Model"),
   show.ci = F,
-  file = "Tables/Table S4_AP Diphthong Model.html"
+  file = "Tables/Table S7_AP PBS Model.html"
+)
+```
+
+## Table S8 - AP ~ Transition-Based Spatial Model Building
+```{r}
+sjPlot::tab_model(
+  base::readRDS(file = "Models/AP_TBS_m1.rds"),
+  base::readRDS(file = "Models/AP_TBS.rds"),
+  dv.labels = c("Model 1", "Final Model"),
+  show.ci = F,
+  file = "Tables/Table S8_AP TBS Model.html"
+)
+```
+
+## Table S9 - AP ~ Spatiotemporal Measure Model Building
+```{r}
+sjPlot::tab_model(
+  base::readRDS(file = "Models/AP_SpaTemp_m1.rds"),
+  base::readRDS(file = "Models/AP_SpaTemp_m2.rds"),
+  base::readRDS(file = "Models/AP_SpaTemp.rds"),
+  dv.labels = c("Model 1", "Model 2", "Final Model"),
+  show.ci = F,
+  file = "Tables/Table S9_AP Spatiotemporal Measure Model.html"
 )
 ```

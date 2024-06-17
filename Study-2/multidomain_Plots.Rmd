@@ -16,23 +16,28 @@ library(beepr) # install.packages('beepr')
 library(plotrix) # install.packages('plotrix')
 library(ggcorrplot) # install.packages("ggcorrplot")
 library(corrr) # install.packages("corrr")
+library(rcartocolor) # install.packages("rcartocolor")
+library(GGally) # install.packages("GGally")
 source('../Functions/MSL Tools.R')
 ```
 
 # Load Data
 ```{r}
-fileInventories <- rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
+fileInventories <-
+  rio::import(file = "../Data/RawData/File Inventories.xlsx") %>%
   dplyr::rename(DatabaseID = `Sub #`,
                 dxTime = `Time Since Diagnosis`) %>%
   dplyr::select(DatabaseID, dxTime, MoCA)
 
-listenerRatings <- rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
+listenerRatings <-
+  rio::import(file = "../Data/PreppedData/ListenerData/ListenerRatings_allRatings.csv") %>%
   dplyr::filter(ratingType == "Int") %>%
   dplyr::filter(condition == "conv") %>%
   dplyr::group_by(DatabaseID, StudyID) %>%
   dplyr::summarise(Rating_M = mean(Rating, na.rm = T))
 
-speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
+speakerList <-
+  rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
   dplyr::select(!`Folder 2`:`Sentence Repetition`) %>%
   base::merge(., fileInventories) %>%
   base::merge(., listenerRatings) %>%
@@ -41,25 +46,25 @@ speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") 
   dplyr::mutate(dxTime = as.numeric(dxTime)) %>%
   
   # Refactoring Sex
-  dplyr::mutate(Sex = factor(Sex, 
-                             levels = c(
-                               "M",
-                               "F"
-                               ),
-                             labels = c(
-                               "Male Speakers",
-                               "Female Speakers"
-                             ))) %>%
+  dplyr::mutate(Sex = factor(
+    Sex,
+    levels = c("M",
+               "F"),
+    labels = c("Male Speakers",
+               "Female Speakers")
+  )) %>%
   
   # Severity-surrogate ratings
-  dplyr::mutate(Severity = case_when(
-    Group == "HC" ~ "",
-    Rating_M > 94 ~ "Normal",
-    between(Rating_M, 85, 94.99) ~ "Mild",
-    between(Rating_M, 70, 84.99) ~ "Moderate",
-    between(Rating_M, 45, 69.99) ~ "Severe",
-    Rating_M < 45 ~ "Profound"
-  )) %>%
+  dplyr::mutate(
+    Severity = case_when(
+      Group == "HC" ~ "",
+      Rating_M > 94 ~ "Normal",
+      between(Rating_M, 85, 94.99) ~ "Mild",
+      between(Rating_M, 70, 84.99) ~ "Moderate",
+      between(Rating_M, 45, 69.99) ~ "Severe",
+      Rating_M < 45 ~ "Profound"
+    )
+  ) %>%
   
   # Removing the MoCA Scores - Not all speakers had them
   dplyr::select(!MoCA)
@@ -69,109 +74,138 @@ speakerList <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") 
 
 # Plots
 ```{r}
-myPal <- rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
-color_HC <- myPal[2] 
+myPal <-
+  rcartocolor::carto_pal(n = 7, name = "Geyser")[c(1, 2, 3, 4, 5, 6, 7)]
+color_HC <- myPal[2]
 color_PD <- myPal[6]
 ```
 
 ## Figure 1 - Correlation Plots
 ```{r}
 
-  # aI Measures ----
-aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+# aI Measures ----
+aiMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F")),
+                kinSpeed = TB_displacement / (duration * 1000))
 
-corTable <- corrr::correlate(aiMeasures %>%
-                               dplyr::select(Int_M,
-                                             AP_M,
-                                             acoDistance,
-                                             F2_Slope,
-                                             kinDistance,
-                                             TB_speedMax
-                                             ) %>%
-                               dplyr::rename(`Intelligibility` = Int_M,
-                                             `Articulatory Precision` = AP_M,
-                                             `Acoustic Distance` = acoDistance,
-                                             `F2 Slope` = F2_Slope,
-                                             `Kinematic Distance` = kinDistance,
-                                             `TB Speed` = TB_speedMax),
-                             method = "pearson", diagonal = 1) %>%
-  dplyr::mutate_at(.vars = c("Intelligibility",
-                             "Articulatory Precision",
-                             "Acoustic Distance",
-                             "Kinematic Distance",
-                             "F2 Slope",
-                             "TB Speed"),
-                   .funs = round,
-                   digits = 2) %>%
+corTable <- corrr::correlate(
+  aiMeasures %>%
+    dplyr::select(Int_M,
+                  AP_M,
+                  acoDistance,
+                  kinDistance,
+                  F2_Slope,
+                  kinSpeed) %>%
+    dplyr::rename(
+      `Intelligibility` = Int_M,
+      `Articulatory Precision` = AP_M,
+      `Acoustic Distance` = acoDistance,
+      `F2 Slope` = F2_Slope,
+      `Kinematic Distance` = kinDistance,
+      `Kinematic Speed` = kinSpeed
+    ),
+  method = "pearson",
+  diagonal = 1
+) %>%
+  dplyr::mutate_at(
+    .vars = c(
+      "Intelligibility",
+      "Articulatory Precision",
+      "Acoustic Distance",
+      "Kinematic Distance",
+      "F2 Slope",
+      "Kinematic Speed"
+    ),
+    .funs = round,
+    digits = 2
+  ) %>%
   column_to_rownames(var = "term")
 
 corrPlot_ai <- ggcorrplot(
-    corTable,
-    hc.order = TRUE,
-    type = "lower",
-    outline.col = "white",
-    lab = TRUE,
-    ggtheme = ggplot2::theme_classic) +
-    scale_fill_gradient2(limit = c(-0.5,1),
-                         low = color_PD,
-                         high =  color_HC,
-                         mid = "white",
-                         midpoint = 0,
-                         name = "Correlation\nCoefficient\n")
-  
-  
-  # VSA Measures ----
-vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-  dplyr::mutate(Sex = factor(Sex, levels = c("M","F")))
+  corTable,
+  hc.order = F,
+  type = "lower",
+  outline.col = "white",
+  lab = TRUE,
+  ggtheme = ggplot2::theme_classic
+) +
+  scale_fill_gradient2(
+    limit = c(-0.5, 1),
+    low = color_PD,
+    high =  color_HC,
+    mid = "white",
+    midpoint = 0,
+    name = "Correlation\nCoefficient\n"
+  )
 
-corTable <- corrr::correlate(vsaMeasures %>%
-                               dplyr::select(Int_M,
-                                             AP_M,
-                                             aVSA,
-                                             kVSA,
-                                             ) %>%
-                               dplyr::rename(`Intelligibility` = Int_M,
-                                             `Articulatory Precision` = AP_M,
-                                             `Acoustic VSA` = aVSA,
-                                             `Kinematic VSA` = kVSA),
-                             method = "pearson", diagonal = 1) %>%
-  dplyr::mutate_at(.vars = c("Intelligibility",
-                             "Articulatory Precision",
-                             "Acoustic VSA",
-                             "Kinematic VSA"),
-                   .funs = round,
-                   digits = 2) %>%
+
+# VSA Measures ----
+vsaMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F")))
+
+corTable <- corrr::correlate(
+  vsaMeasures %>%
+    dplyr::select(Int_M,
+                  AP_M,
+                  aVSA,
+                  kVSA,) %>%
+    dplyr::rename(
+      `Intelligibility` = Int_M,
+      `Articulatory Precision` = AP_M,
+      `Acoustic VSA` = aVSA,
+      `Kinematic VSA` = kVSA
+    ),
+  method = "pearson",
+  diagonal = 1
+) %>%
+  dplyr::mutate_at(
+    .vars = c(
+      "Intelligibility",
+      "Articulatory Precision",
+      "Acoustic VSA",
+      "Kinematic VSA"
+    ),
+    .funs = round,
+    digits = 2
+  ) %>%
   column_to_rownames(var = "term") %>%
-  dplyr::mutate(`Acoustic VSA` = `Acoustic VSA`/1000)
+  dplyr::mutate(`Acoustic VSA` = `Acoustic VSA` / 1000)
 
 corrPlot_vsa <- ggcorrplot(
-    corTable,
-    hc.order = F,
-    type = "lower",
-    outline.col = "white",
-    lab = TRUE,
-    ggtheme = ggplot2::theme_classic) +
-    scale_fill_gradient2(limit = c(-0.5,1),
-                         low = color_PD,
-                         high =  color_HC,
-                         mid = "white",
-                         midpoint = 0,
-                         name = "Correlation\nCoefficient\n")
-  
+  corTable,
+  hc.order = F,
+  type = "lower",
+  outline.col = "white",
+  lab = TRUE,
+  ggtheme = ggplot2::theme_classic
+) +
+  scale_fill_gradient2(
+    limit = c(-0.5, 1),
+    low = color_PD,
+    high =  color_HC,
+    mid = "white",
+    midpoint = 0,
+    name = "Correlation\nCoefficient\n"
+  )
 
-  
-  corrPlot <- corrPlot_vsa + corrPlot_ai + patchwork::plot_layout(guides = "collect")
-  corrPlot
-  
-  # Correlation Plots
-   ggsave(filename = "Figure 1_Correlation Matrix.png",
-       plot = corrPlot,
-       path = "Plots/",
-       height = 3,
-       width = 6.5,
-       units = "in",
-       scale = 1.5)
+
+
+corrPlot <-
+  corrPlot_vsa + corrPlot_ai + patchwork::plot_layout(guides = "collect")
+corrPlot
+
+# Correlation Plots
+ggsave(
+  filename = "Figure 1_Correlation Matrix.png",
+  plot = corrPlot,
+  path = "Plots/",
+  height = 3,
+  width = 6.5,
+  units = "in",
+  scale = 1.5
+)
 ```
 
 ## Figure 2 - Intelligibility & Articulatory Precision
@@ -222,7 +256,7 @@ aiMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasure
                   ylim = c(0,100))
 
 vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
-dplyr::mutate(aVSA = aVSA/1000,
+dplyr::mutate(aVSA = aVSA / 1000, # converting Hz to kHz
   Sex = factor(Sex,
                              levels = c("M",
                                         "F"),
@@ -257,7 +291,7 @@ dplyr::mutate(aVSA = aVSA/1000,
   
   # Adding the Labels
   labs(x = "Acoustic VSA (kHz²)",
-       y = "Kinematic VSA (mm)") +
+       y = "Kinematic VSA (mm²)") +
   
   # Changing the colors
   scale_color_manual(values = c(color_HC,color_PD)) +
@@ -279,6 +313,7 @@ ggsave(filename = "Figure 2_measure relationships.png",
        width = 6.5,
        scale = 1.3,
        bg = "white")
+
 ```
 
 
@@ -286,8 +321,8 @@ ggsave(filename = "Figure 2_measure relationships.png",
 ## Figure 3 - Int & AP ~ VSA
 ```{r}
 # Load the models
-Int_VSA_finalModel <- base::readRDS(file = "Models/Int_VSA_finalModel.rds")
-AP_VSA_finalModel <- base::readRDS(file = "Models/AP_VSA_finalModel.rds")
+Int_PBS <- base::readRDS(file = "Models/Int_PBS.rds")
+AP_PBS <- base::readRDS(file = "Models/AP_PBS.rds")
 
 # Just scatter plot ----
 plot_VSA_data <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
@@ -362,12 +397,12 @@ plot_VSA <- plot_VSA_data %>%
 plot_VSA
 
 # Scatter plot + Model Predictions ----
-  modelData <- rbind(Int_VSA_finalModel@frame %>%
-                      dplyr::mutate(fit = predict(Int_VSA_finalModel),
+  modelData <- rbind(Int_PBS@frame %>%
+                      dplyr::mutate(fit = predict(Int_PBS),
                                     ratingType = "Int") %>%
                       dplyr::rename(Rating = Int_M),
-                    AP_VSA_finalModel@frame %>%
-                      dplyr::mutate(fit = predict(AP_VSA_finalModel),
+                    AP_PBS@frame %>%
+                      dplyr::mutate(fit = predict(AP_PBS),
                                     ratingType = "AP") %>%
                       dplyr::rename(Rating = AP_M)) %>%
   dplyr::select(!Sex) %>%
@@ -410,7 +445,7 @@ plot_VSA_modelData <- modelData %>%
                 x = aVSA,
                 group = StudyID,
                 color = Group),
-            size = .8) +
+            linewidth = .8) +
   
   # Facet by Sex
   facet_grid(ratingType ~ Sex,
@@ -448,8 +483,8 @@ ggsave(filename = "Figure 3_VSA Results.png",
 ## Figure 4 - Int & AP ~ kinDistance
 ```{r}
 # Load the models
-Int_ai_finalModel <- base::readRDS(file = "Models/Int_ai_finalModel.rds")
-AP_ai_finalModel <- base::readRDS(file = "Models/AP_ai_finalModel.rds")
+Int_TBS <- base::readRDS(file = "Models/Int_TBS.rds")
+AP_TBS <- base::readRDS(file = "Models/AP_TBS.rds")
 
 # Just scatter plots ----
 plot_ai_data <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
@@ -519,12 +554,12 @@ plot_ai
 
 # Scatter plot + Model Predictions  ----
 ## Get the model data
-  modelData <- rbind(Int_ai_finalModel@frame %>%
-                      dplyr::mutate(fit = predict(Int_ai_finalModel),
+  modelData <- rbind(Int_TBS@frame %>%
+                      dplyr::mutate(fit = predict(Int_TBS),
                                     ratingType = "Int") %>%
                       dplyr::rename(Rating = Int_M),
-                    AP_ai_finalModel@frame %>%
-                      dplyr::mutate(fit = predict(AP_ai_finalModel),
+                    AP_TBS@frame %>%
+                      dplyr::mutate(fit = predict(AP_TBS),
                                     ratingType = "AP") %>%
                       dplyr::rename(Rating = AP_M)) %>%
   dplyr::select(!Sex) %>%
@@ -568,7 +603,7 @@ plot_ai_speakerSlopes <- modelData %>%
                 x = kinDistance,
                 group = StudyID,
                 color = Group),
-            size = .8) +
+            linewidth = .8) +
   
   # Facet by Sex
   facet_grid(ratingType~Sex,
@@ -602,7 +637,123 @@ ggsave(filename = "Figure 4_kinDistance Results.png",
 
 ```
 
-## Figure 5 - aVSA & kVSA
+## Figure 5 - Int & AP ~ F2 Slope
+```{r}
+# Load the models
+Int_SpaTemp <- base::readRDS(file = "Models/Int_SpaTemp.rds")
+AP_SpaTemp <- base::readRDS(file = "Models/AP_SpaTemp.rds")
+
+# Just scatter plots ----
+plot_ai_data <- rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex,
+                             levels = c("M",
+                                        "F"),
+                             labels = c("Male Speakers",
+                                        "Female Speakers")
+                             ),
+                Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   ))) %>%
+  tidyr::pivot_longer(cols = c(Int_M,AP_M),
+                      names_to = "ratingType",
+                      values_to = "Rating") %>%
+  dplyr::mutate(ratingType = factor(ratingType,
+                                    levels = c("Int_M","AP_M"),
+                                    labels = c("Intelligibility (VAS)",
+                                               "Articulatory Precision (VAS)")))
+
+
+# Scatter plot + Model Predictions  ----
+## Get the model data
+  modelData <- rbind(
+                    AP_SpaTemp@frame %>%
+                      dplyr::mutate(fit = predict(AP_SpaTemp),
+                                    ratingType = "AP") %>%
+                      dplyr::rename(Rating = AP_M)) %>%
+  dplyr::select(!Sex) %>%
+  dplyr::mutate(ratingType = case_when(
+    ratingType == "Int" ~ "Intelligibility (VAS)",
+    ratingType == "AP" ~ "Articulatory Precision (VAS)"
+  )) %>%
+  base::merge(., plot_ai_data) %>%
+  dplyr::mutate(Condition = factor(condition,
+                                   levels = c(
+                                     "lessClear",
+                                     "conv",
+                                     "moreClear"
+                                   ),
+                                   labels = c(
+                                     "Less\nClear",
+                                     "Conversational",
+                                     "More\nClear"
+                                   )),
+                ratingType = factor(ratingType,
+                                    levels = c(
+                                      "Intelligibility (VAS)",
+                                      "Articulatory Precision (VAS)"
+                                    )))
+
+
+
+## Making the Plot
+plot_SpaTemp_speakerSlopes <- modelData %>%
+  ggplot() +
+  aes(y = Rating,
+      x = F2_Slope) +
+  geom_point(aes(
+    shape = Condition,
+    color = Group
+    ),
+    alpha = .3) +
+
+  # Adding the model prediction lines
+  geom_line(aes(y = fit,
+                x = F2_Slope,
+                group = StudyID,
+                color = Group),
+            linewidth = .8) +
+  
+  # Facet by Sex
+  facet_grid(ratingType~Sex,
+             scales = "free_x") +
+  
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = "F2 Slope (Hz/ms)") +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+plot_SpaTemp_speakerSlopes
+
+ggsave(filename = "Figure 5_Spatiotemporal Results.png",
+       plot = plot_SpaTemp_speakerSlopes,
+       path = "Plots/",
+       height = 3,
+       width = 6,
+       scale = 1,
+       bg = "white")
+
+```
+
+## Figure 6 - aVSA & kVSA
 
 ```{r}
 
@@ -705,7 +856,7 @@ vsaComparisons <- aVSA + kVSA +
               ncol = 1)
 vsaComparisons
 
-ggsave(filename = "Plots/Figure 5_vsaComparison.png",
+ggsave(filename = "Plots/Figure 6_vsaComparison.png",
        plot = vsaComparisons,
        height = 3,
        width = 3,
@@ -713,3 +864,527 @@ ggsave(filename = "Plots/Figure 5_vsaComparison.png",
        scale = 1.7)
 ```
 
+# Supplemental Figures
+## Figure S1 - VSA Correlation by Group
+```{r}
+# VSA Measures ----
+vsaMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F")))
+
+
+scatterFunction <- function(x, y, data) {
+  # Making the Plot
+plot <- data %>%
+  ggplot() +
+  aes(y = y,
+      x = x) +
+  geom_point(aes(
+    shape = condition,
+    color = Group,
+    alpha = Group)) +
+  geom_smooth(method = "lm",
+              color = "#2A2A28",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_alpha_manual(values = c(.8,.8)) +
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+return(plot)
+}
+
+Scatter_Matrix_vsa <- ggpairs(
+  vsaMeasures,
+  mapping = aes(color = Group,
+                shape = condition,
+                alpha = Group),
+  diag = list("blank"),
+  columns = c(
+    "Int_M",
+    "AP_M",
+    "aVSA",
+    "kVSA"
+  ),
+  columnLabels = c(
+    "Intelligibility",
+    "Artic Precision",
+    "Acoustic VSA",
+    "Kinematic VSA"
+  ),
+
+  axisLabels = "show",
+  legend = grab_legend(
+    scatterFunction(
+      x = aiMeasures$Int_M,
+      y = aiMeasures$AP_M,
+      data = aiMeasures
+    ))
+) +
+  scale_alpha_manual(values = c(.8,.8)) +
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15)) +
+  theme_minimal() +
+  theme(panel.border = element_rect(fill = NA, color = "black"),
+        #panel.grid.major = element_blank(),
+        panel.grid = element_blank())
+Scatter_Matrix_vsa
+
+# Intelligibility Column
+Scatter_Matrix_vsa[2,1] <- scatterFunction(x = vsaMeasures$Int_M,
+                                     y = vsaMeasures$AP_M,
+                                     data = vsaMeasures)
+Scatter_Matrix_vsa[3,1] <- scatterFunction(x = vsaMeasures$Int_M,
+                                     y = vsaMeasures$aVSA,
+                                     data = vsaMeasures)
+Scatter_Matrix_vsa[4,1] <- scatterFunction(x = vsaMeasures$Int_M,
+                                     y = vsaMeasures$kVSA,
+                                     data = vsaMeasures)
+
+# AP Column
+Scatter_Matrix_vsa[3,2] <- scatterFunction(x = vsaMeasures$AP_M,
+                                     y = vsaMeasures$aVSA,
+                                     data = vsaMeasures)
+Scatter_Matrix_vsa[4,2] <- scatterFunction(x = vsaMeasures$AP_M,
+                                     y = vsaMeasures$kVSA,
+                                     data = vsaMeasures)
+
+# aVSA Column
+Scatter_Matrix_vsa[4,3] <- scatterFunction(x = vsaMeasures$aVSA,
+                                     y = vsaMeasures$kVSA,
+                                     data = vsaMeasures)
+
+Scatter_Matrix_vsa
+
+ggsave(
+  plot = Scatter_Matrix_vsa,
+  filename = "Plots/Figure S1_VSA Correlation Matrix by Group.png",
+  width = 6.5,
+  height = 5.8,
+  unit = "in",
+  scale = 1.5
+)
+```
+## Figure S2 - ai Correlation by Group
+```{r}
+# aI Measures ----
+aiMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F")),
+                kinSpeed = TB_displacement / (duration * 1000))
+
+scatterFunction <- function(x, y, data) {
+  # Making the Plot
+plot <- data %>%
+  ggplot() +
+  aes(y = y,
+      x = x) +
+  geom_point(aes(
+    shape = condition,
+    color = Group,
+    alpha = Group)) +
+  geom_smooth(method = "lm",
+              color = "#2A2A28",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_alpha_manual(values = c(.8,.8)) +
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+return(plot)
+}
+
+Scatter_Matrix_ai <- ggpairs(
+  aiMeasures,
+  mapping = aes(color = Group,
+                shape = condition,
+                alpha = Group),
+  diag = list("blank"),
+  columns = c(
+    "Int_M",
+    "AP_M",
+    "acoDistance",
+    "kinDistance",
+    "F2_Slope",
+    "kinSpeed"
+  ),
+  columnLabels = c(
+    "Intelligibility",
+    "Artic Precision",
+    "Acoustic Distance",
+    "Kinematic Distance",
+    "F2 Slope",
+    "Kinematic Speed"
+  ),
+
+  axisLabels = "show",
+  legend = grab_legend(
+    scatterFunction(
+      x = aiMeasures$Int_M,
+      y = aiMeasures$AP_M,
+      data = aiMeasures
+    ))
+) +
+  scale_alpha_manual(values = c(.8,.8)) +
+  scale_color_manual(values = c(color_HC,color_PD)) +
+  scale_fill_manual(values = c(color_HC,color_PD)) +
+  scale_shape_manual(values = c(17, 16, 15)) +
+  theme_minimal() +
+  theme(panel.border = element_rect(fill = NA, color = "black"),
+        #panel.grid.major = element_blank(),
+        panel.grid = element_blank())
+Scatter_Matrix_ai
+
+# Intelligibility Column
+Scatter_Matrix_ai[2,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$AP_M,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[3,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$acoDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[4,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$kinDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[5,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+# AP Column
+Scatter_Matrix_ai[3,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$acoDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[4,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$kinDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[5,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+# acoDist Column
+Scatter_Matrix_ai[4,3] <- scatterFunction(x = aiMeasures$acoDistance,
+                                     y = aiMeasures$kinDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[5,3] <- scatterFunction(x = aiMeasures$acoDistance,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,3] <- scatterFunction(x = aiMeasures$acoDistance,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+# acoDist Column
+Scatter_Matrix_ai[5,4] <- scatterFunction(x = aiMeasures$kinDistance,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,4] <- scatterFunction(x = aiMeasures$kinDistance,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+# F2_Slope Column
+Scatter_Matrix_ai[6,5] <- scatterFunction(x = aiMeasures$F2_Slope,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+Scatter_Matrix_ai
+
+ggsave(
+  plot = Scatter_Matrix_ai,
+  filename = "Plots/Figure S2_Diphthong Correlation Matrix by Group.png",
+  width = 6.5,
+  height = 5.8,
+  unit = "in",
+  scale = 1.5
+)
+```
+## Figure S3 - VSA Correlation by Condition
+```{r}
+# VSA Measures ----
+vsaMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F")))
+
+
+scatterFunction <- function(x, y, data) {
+  # Making the Plot
+plot <- data %>%
+  ggplot() +
+  aes(y = y,
+      x = x,
+      color = condition) +
+  geom_point(aes(
+    shape = Group,
+    color = condition,
+    alpha = Group)) +
+  geom_smooth(method = "lm",
+              linetype = 2,
+              alpha = .2,
+              ) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_alpha_manual(values = c(.8,.8)) +
+  scale_color_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  scale_fill_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+return(plot)
+}
+
+Scatter_Matrix_vsa <- ggpairs(
+  vsaMeasures,
+  mapping = aes(color = condition,
+                shape = Group,
+                alpha = Group),
+  diag = list("blank"),
+  columns = c(
+    "Int_M",
+    "AP_M",
+    "aVSA",
+    "kVSA"
+  ),
+  columnLabels = c(
+    "Intelligibility",
+    "Artic Precision",
+    "Acoustic VSA",
+    "Kinematic VSA"
+  ),
+
+  axisLabels = "show",
+  legend = grab_legend(
+    scatterFunction(
+      x = aiMeasures$Int_M,
+      y = aiMeasures$AP_M,
+      data = aiMeasures
+    ))
+) +
+  scale_alpha_manual(values = c(.8,.8)) +
+  scale_color_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  scale_fill_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  theme_minimal() +
+  theme(panel.border = element_rect(fill = NA, color = "black"),
+        #panel.grid.major = element_blank(),
+        panel.grid = element_blank())
+Scatter_Matrix_vsa
+
+# Intelligibility Column
+Scatter_Matrix_vsa[2,1] <- scatterFunction(x = vsaMeasures$Int_M,
+                                     y = vsaMeasures$AP_M,
+                                     data = vsaMeasures)
+Scatter_Matrix_vsa[3,1] <- scatterFunction(x = vsaMeasures$Int_M,
+                                     y = vsaMeasures$aVSA,
+                                     data = vsaMeasures)
+Scatter_Matrix_vsa[4,1] <- scatterFunction(x = vsaMeasures$Int_M,
+                                     y = vsaMeasures$kVSA,
+                                     data = vsaMeasures)
+
+# AP Column
+Scatter_Matrix_vsa[3,2] <- scatterFunction(x = vsaMeasures$AP_M,
+                                     y = vsaMeasures$aVSA,
+                                     data = vsaMeasures)
+Scatter_Matrix_vsa[4,2] <- scatterFunction(x = vsaMeasures$AP_M,
+                                     y = vsaMeasures$kVSA,
+                                     data = vsaMeasures)
+
+# aVSA Column
+Scatter_Matrix_vsa[4,3] <- scatterFunction(x = vsaMeasures$aVSA,
+                                     y = vsaMeasures$kVSA,
+                                     data = vsaMeasures)
+
+Scatter_Matrix_vsa
+
+ggsave(
+  plot = Scatter_Matrix_vsa,
+  filename = "Plots/Figure S3_VSA Correlation Matrix by Group.png",
+  width = 6.5,
+  height = 5.8,
+  unit = "in",
+  scale = 1.5
+)
+```
+## Figure S4 - ai Correlation by Condition
+```{r}
+# aI Measures ----
+aiMeasures <-
+  rio::import(file = "../Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv") %>%
+  dplyr::mutate(Sex = factor(Sex, levels = c("M", "F")),
+                kinSpeed = TB_displacement / (duration * 1000))
+
+scatterFunction <- function(x, y, data) {
+  # Making the Plot
+plot <- data %>%
+  ggplot() +
+  aes(y = y,
+      x = x,
+      color = condition) +
+  geom_point(aes(
+    shape = Group,
+    color = condition,
+    alpha = Group)) +
+  geom_smooth(method = "lm",
+              linetype = 2,
+              alpha = .4,
+              ) +
+  
+  # Changing the theme, labels, and title
+  theme_minimal() +
+  labs(x = bquote('Acoustic VSA (kHz'^2*")")) +
+  #ggtitle("Acoustic VSA") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_blank(),
+    ) +
+
+  # Color Palate
+  scale_alpha_manual(values = c(.4,.4)) +
+  scale_color_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  scale_fill_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  scale_shape_manual(values = c(17, 16, 15))
+
+return(plot)
+}
+
+Scatter_Matrix_ai <- ggpairs(
+  aiMeasures,
+  mapping = aes(color = condition,
+                shape = Group,
+                alpha = Group),
+  diag = list("blank"),
+  columns = c(
+    "Int_M",
+    "AP_M",
+    "acoDistance",
+    "kinDistance",
+    "F2_Slope",
+    "kinSpeed"
+  ),
+  columnLabels = c(
+    "Intelligibility",
+    "Artic Precision",
+    "Acoustic Distance",
+    "Kinematic Distance",
+    "F2 Slope",
+    "Kinematic Speed"
+  ),
+
+  axisLabels = "show",
+  legend = grab_legend(
+    scatterFunction(
+      x = aiMeasures$Int_M,
+      y = aiMeasures$AP_M,
+      data = aiMeasures
+    ))
+) +
+  scale_alpha_manual(values = c(.8,.8)) +
+  scale_color_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  scale_fill_manual(values = c(myPal[5], myPal[7], myPal[2])) +
+  theme_minimal() +
+  theme(panel.border = element_rect(fill = NA, color = "black"),
+        #panel.grid.major = element_blank(),
+        panel.grid = element_blank())
+
+Scatter_Matrix_ai
+
+# Intelligibility Column
+Scatter_Matrix_ai[2,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$AP_M,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[3,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$acoDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[4,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$kinDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[5,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,1] <- scatterFunction(x = aiMeasures$Int_M,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+# AP Column
+Scatter_Matrix_ai[3,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$acoDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[4,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$kinDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[5,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,2] <- scatterFunction(x = aiMeasures$AP_M,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+# acoDist Column
+Scatter_Matrix_ai[4,3] <- scatterFunction(x = aiMeasures$acoDistance,
+                                     y = aiMeasures$kinDistance,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[5,3] <- scatterFunction(x = aiMeasures$acoDistance,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,3] <- scatterFunction(x = aiMeasures$acoDistance,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+# acoDist Column
+Scatter_Matrix_ai[5,4] <- scatterFunction(x = aiMeasures$kinDistance,
+                                     y = aiMeasures$F2_Slope,
+                                     data = aiMeasures)
+Scatter_Matrix_ai[6,4] <- scatterFunction(x = aiMeasures$kinDistance,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+# F2_Slope Column
+Scatter_Matrix_ai[6,5] <- scatterFunction(x = aiMeasures$F2_Slope,
+                                     y = aiMeasures$kinSpeed,
+                                     data = aiMeasures)
+
+Scatter_Matrix_ai
+
+ggsave(
+  plot = Scatter_Matrix_ai,
+  filename = "Plots/Figure S4_Diphthong Correlation Matrix by Group.png",
+  width = 6.5,
+  height = 5.8,
+  unit = "in",
+  scale = 1.5
+)
+```

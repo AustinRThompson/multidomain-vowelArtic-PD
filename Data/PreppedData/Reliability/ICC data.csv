@@ -1,0 +1,7 @@
+Measure,intra_ICC,intra_lbound,intra_ubound,inter_ICC,inter_lbound,inter_ubound
+acoDistance,0.97,0.95,0.98,0.93,0.89,0.95
+aVSA,0.99,0.98,1,0.95,0.89,0.98
+F2_Slope,0.97,0.95,0.98,0.91,0.87,0.94
+kinDistance,0.83,0.54,0.92,0.82,0.39,0.93
+kinSpeed,0.54,0.21,0.73,0.55,0.06,0.78
+kVSA,0.99,0.97,0.99,0.97,0.94,0.99
