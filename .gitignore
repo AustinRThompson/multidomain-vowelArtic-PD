@@ -51,7 +51,7 @@ rsconnect/
 **/.DS_Store
 .wav
 .xlsx
-.rds
+**/.rds
 
 Data/RawData/
 Data/PreppedData/Acoustic Segments
