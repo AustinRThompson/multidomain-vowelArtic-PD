@@ -648,7 +648,7 @@ rm(list = ls(pattern = "^emms_"))
 ### Saving Models
 Saving the models for the table
 ```{r}
-base::saveRDS(Int_TBS_m1, file = "Models/Int_TBS_m1.rds")
+base::saveRDS(Int_TBS, file = "Models/Int_TBS_m1.rds")
 base::saveRDS(AP_TBS_m1, file = "Models/AP_TBS_m1.rds")
 ```
 

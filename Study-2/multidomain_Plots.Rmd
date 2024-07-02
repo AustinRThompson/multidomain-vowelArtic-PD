@@ -536,7 +536,7 @@ plot_ai <- plot_ai_data %>%
   
   # Changing the theme, labels, and title
   theme_minimal() +
-  labs(x = bquote('Kinematic (TB) Distance (mm'^2*")")) +
+  labs(x = 'Kinematic (TB) Distance (mm)') +
   theme(
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5),
@@ -562,7 +562,8 @@ plot_ai
                       dplyr::mutate(fit = predict(AP_TBS),
                                     ratingType = "AP") %>%
                       dplyr::rename(Rating = AP_M)) %>%
-  dplyr::select(!Sex) %>%
+  dplyr::select(!Sex,
+                StudyID = SpeakerID) %>%
   dplyr::mutate(ratingType = case_when(
     ratingType == "Int" ~ "Intelligibility (VAS)",
     ratingType == "AP" ~ "Articulatory Precision (VAS)"
@@ -612,7 +613,7 @@ plot_ai_speakerSlopes <- modelData %>%
   
   # Changing the theme, labels, and title
   theme_minimal() +
-  labs(x = bquote('Kinematic (TB) Distance (mm'^2*")")) +
+  labs(x = 'Kinematic (TB) Distance (mm)') +
   #ggtitle("Acoustic VSA") +
   theme(
     aspect.ratio = 1,
