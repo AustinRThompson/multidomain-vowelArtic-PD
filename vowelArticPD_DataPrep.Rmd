@@ -25,7 +25,8 @@ source('Functions/MSL Tools.R')
 This block cleans up the listener data.
 ```{r}
 # Load in the data
-df <- file.info(list.files("Data/RawData/ListenerData/", full.names = T))
+df <- file.info(list.files("Data/RawData/ListenerData/", full.names = T)) %>%
+  dplyr::filter(row.names(.) != "Data/RawData/ListenerData//DME")
 importPath <- rownames(df)[which.max(df$mtime)]
 
 listeners <- utils::read.csv(file = importPath,
@@ -105,7 +106,8 @@ rm(headings,listenerDemoHeadings)
 
 listenerDemo <- listenerData |>
   dplyr::mutate(age = as.numeric(age)) |>
-  dplyr::select(ListenerID:37)
+  dplyr::select(ListenerID:37) |>
+  dplyr::select(!c(Status:IPAddress, RecordedDate:LocationLongitude, ProlificID))
 
 listenerRatings <- listenerData |>
   dplyr::select(!StartDate:37) |>
@@ -255,29 +257,28 @@ thompson2023
 
 ### Avg Rating Plot
 ```{r, eval = F}
-speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv") %>%
-  dplyr::rename(StudyID = Study.ID)
+speakerList <- rio::import(file = "Data/PreppedData/Speaker List_Clean.csv")
 
 listenerRatings <- utils::read.csv(file = "Data/PreppedData/ListenerData/ListenerRatings.csv") %>%
-    dplyr::select(!1)
+    dplyr::select(!X)
 
 plotData <- listenerRatings |>
-  dplyr::group_by(SpeakerID, ratingType, Condition) |>
+  dplyr::group_by(DatabaseID, ratingType, condition) |>
   dplyr::summarize(Count = sum(!is.na(Rating)),
             M = mean(Rating,na.rm = T),
             SD = sd(Rating, na.rm = T)) |>
-  tidyr::pivot_wider(id_cols = SpeakerID:ratingType,
+  tidyr::pivot_wider(id_cols = DatabaseID:ratingType,
                      names_from = Condition,
                      values_from = M) |>
   dplyr::mutate(segMin = base::min(conv,lessClear,moreClear),
                 segMax = base::max(conv,lessClear,moreClear),
                 ratingAvg = base::mean(conv,lessClear,moreClear),
-                DatabaseID = as.factor(SpeakerID),
+                DatabaseID = as.factor(DatabaseID),
                 ratingType = factor(ratingType,
                                     levels = c("Int", "AP"),
                                     labels = c("Intelligibility", "Articulatory Precision"))) |>
   #dplyr::filter(ratingType == "Int") |>
-  dplyr::select(!SpeakerID) %>%
+  #dplyr::select(!DatabaseID) %>%
   base::merge(., speakerList %>% dplyr::select(DatabaseID, StudyID)) %>%
   dplyr::mutate(StudyID = as.factor(StudyID)) %>%
   arrange(segMax)
@@ -1000,8 +1001,7 @@ speakerList <- speakers %>%
                row_number,
                remove = FALSE,
                sep = "") %>%
-  dplyr::rename(StudyID = Study.ID) %>%
-  dplyr::select(!c(row_number)) %>%
+  dplyr::select(!c(row_number, Study.ID)) %>%
   base::merge(., speakerSeverities) %>%
   dplyr::mutate(
     Int = round(Int, digits = 2),

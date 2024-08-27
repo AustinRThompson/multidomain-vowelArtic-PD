@@ -122,7 +122,7 @@ corTable <- corrr::correlate(
   ) %>%
   column_to_rownames(var = "term")
 
-corrPlot_ai <- ggcorrplot(
+corrPlot_ai <- ggcorrplot::ggcorrplot(
   corTable,
   hc.order = F,
   type = "lower",
@@ -173,7 +173,7 @@ corTable <- corrr::correlate(
   column_to_rownames(var = "term") %>%
   dplyr::mutate(`Acoustic VSA` = `Acoustic VSA` / 1000)
 
-corrPlot_vsa <- ggcorrplot(
+corrPlot_vsa <- ggcorrplot::ggcorrplot(
   corTable,
   hc.order = F,
   type = "lower",
@@ -759,7 +759,7 @@ ggsave(filename = "Figure 5_Spatiotemporal Results.png",
 ```{r}
 
 speakers <- rio::import(file = "../Data/PreppedData/Speaker List_Clean.csv") %>%
-  dplyr::select(DatabaseID:Sex) %>%
+  dplyr::select(DatabaseID:StudyID) %>%
   dplyr::filter(StudyID == "HCF03")
 
 vsaMeasures <- rio::import(file = "../Data/PreppedData/CollatedData/allSpeakers_tempMid.csv") %>%
@@ -908,8 +908,8 @@ plot <- data %>%
 return(plot)
 }
 
-Scatter_Matrix_vsa <- ggpairs(
-  vsaMeasures,
+Scatter_Matrix_vsa <- GGally::ggpairs(
+  data = vsaMeasures,
   mapping = aes(color = Group,
                 shape = condition,
                 alpha = Group),
@@ -928,7 +928,7 @@ Scatter_Matrix_vsa <- ggpairs(
   ),
 
   axisLabels = "show",
-  legend = grab_legend(
+  legend = GGally::grab_legend(
     scatterFunction(
       x = aiMeasures$Int_M,
       y = aiMeasures$AP_M,
