@@ -123,9 +123,9 @@ brms::get_prior(
 Now we can specify weakly informative priors.
 ```{r}
 prior_int <- c(
-  prior(normal(0, 1), class = Intercept),
-  prior(normal(0, 1), class = b),
-  prior(cauchy(0, 1), class = sd),
+  prior(normal(0, 10), class = Intercept), # start with larger value - 10
+  prior(normal(0, 10), class = b),
+  prior(cauchy(0, 10), class = sd), # paper on variance priors: https://projecteuclid.org/journals/bayesian-analysis/volume-1/issue-3/Prior-distributions-for-variance-parameters-in-hierarchical-models-comment-on/10.1214/06-BA117A.full - check 95% interval for cauchy - very large upper bound 10
   prior(gamma(1, 0.5), class = phi) # Phi = 1, mu = .5
 )
 ```
@@ -171,6 +171,7 @@ mcmc_areas(posterior,
            pars = fixed_effects,
            # arbitrary threshold for shading probability mass
            prob = 0.95) 
+
 ```
 
 ```{r}
@@ -178,14 +179,23 @@ bayestestR::p_direction(condition_int)
 ```
 ### Visualizations
 ```{r}
+epsilon <- 1e-5
 post_Int_data <- modelData %>%
   data_grid(Severity, condition) %>%
-  epred_draws(object = condition_int, ndraws = 4000, re_formula = NA)
+  epred_draws(object = condition_int,
+              ndraws = 4000,
+              re_formula = NA) %>%
+  # Reverse the transformation applied before running the model.
+  dplyr::mutate(
+    Int = (.epred - epsilon) / (1 - 2 * epsilon),
+    # Step 1 & 2: Reverse the offset and scaling
+    Int = Int * nrow(modelData) / ((nrow(modelData) - 1) + .5)
+  )
 
 post_Int_plot <- post_Int_data %>%
   ggplot() +
   aes(
-    y = .epred,
+    y = Int,
     x = Severity,
     group = condition,
     #alpha = condition,
@@ -193,7 +203,9 @@ post_Int_plot <- post_Int_data %>%
   ) +
   
   # Density + CrIs
-  stat_halfeye() +
+  stat_halfeye(
+    alpha = .8
+  ) +
 
   # Rename axes
   labs(
@@ -203,6 +215,12 @@ post_Int_plot <- post_Int_data %>%
 post_Int_plot
 
 int_agg <- modelData %>%
+  # Reverse the transformation applied before running the model.
+  dplyr::mutate(
+    Int = (Int - epsilon) / (1 - 2 * epsilon),
+    # Step 1 & 2: Reverse the offset and scaling
+    Int = Int * nrow(modelData) / ((nrow(modelData) - 1) + .5)
+  ) %>%
   group_by(StudyID, Severity, condition) %>%
   dplyr::summarise(.epred = mean(Int))
 
@@ -220,7 +238,8 @@ final_Int_plot <- post_Int_plot +
     position = position_nudge(x = -.1)
   ) +
   coord_cartesian(ylim = c(0, 1))  +
-  labs(fill = "Condition")
+  labs(fill = "Condition") +
+  scale_fill_manual(values = )
 final_Int_plot
 
 ggsave(
@@ -309,9 +328,9 @@ brms::get_prior(
 Now we can specify weakly informative priors.
 ```{r}
 prior_AP <- c(
-  prior(normal(0, 1), class = Intercept),
-  prior(normal(0, 1), class = b),
-  prior(cauchy(0, 1), class = sd),
+  prior(normal(0, 10), class = Intercept),
+  prior(normal(0, 10), class = b),
+  prior(cauchy(0, 10), class = sd),
   prior(gamma(1, 0.5), class = phi) # Phi = 1, mu = .5
 )
 ```
@@ -365,21 +384,30 @@ bayestestR::p_direction(condition_AP)
 ```
 ### Visualizations
 ```{r}
+epsilon <- 1e-5
 post_AP_data <- modelData %>%
   data_grid(Severity, condition) %>%
-  epred_draws(object = condition_AP, ndraws = 4000, re_formula = NA)
+  epred_draws(object = condition_AP,
+              ndraws = 4000,
+              re_formula = NA) %>%
+  # Reverse the transformation applied before running the model.
+  dplyr::mutate(
+    AP = (.epred - epsilon) / (1 - 2 * epsilon),
+    # Step 1 & 2: Reverse the offset and scaling
+    AP = AP * nrow(modelData) / ((nrow(modelData) - 1) + .5)
+  )
 
 post_AP_plot <- post_AP_data %>%
   ggplot() +
   aes(
-    y = .epred,
+    y = AP,
     x = Severity,
     group = condition,
     fill = condition
   ) +
   
   # Density + CrIs
-  stat_halfeye() +
+  stat_halfeye(alpha = .5) +
 
   # Rename axes
   labs(
@@ -389,14 +417,20 @@ post_AP_plot <- post_AP_data %>%
 post_AP_plot
 
 AP_agg <- modelData %>%
+  # Reverse the transformation applied before running the model.
+  dplyr::mutate(
+    AP = (AP - epsilon) / (1 - 2 * epsilon),
+    # Step 1 & 2: Reverse the offset and scaling
+    AP = AP * nrow(modelData) / ((nrow(modelData) - 1) + .5)
+  ) %>%
   group_by(StudyID, Severity, condition) %>%
-  dplyr::summarise(.epred = mean(AP))
+  dplyr::summarise(AP = mean(AP))
 
 final_AP_plot <- post_AP_plot +
   geom_point(
     data = AP_agg,
     aes(
-      y = .epred,
+      y = AP,
     x = Severity,
     group = condition,
     fill = condition),
@@ -469,10 +503,10 @@ Now we can specify weakly informative priors.
 ```{r}
 # specify priors in log space
 priors_aVSA <- c(
-  prior(normal(0, 1), class = Intercept),
-  prior(normal(0, 1), class = b),
-  prior(cauchy(0, 1), class = sd),
-  prior(cauchy(0, 1), class = sigma)
+  prior(normal(0, 10), class = Intercept),
+  prior(normal(0, 10), class = b),
+  prior(cauchy(0, 10), class = sd),
+  prior(cauchy(0, 10), class = sigma)
 )
 ```
 
@@ -497,6 +531,7 @@ condition_aVSA <- brms::brm(
 ### Model Summary
 ```{r}
 summary(condition_aVSA)
+tidy(condition_aVSA)
 ```
 ### Model Diagnostics
 ```{r}
@@ -539,7 +574,7 @@ post_aVSA_plot <- post_aVSA_data %>%
       fill = condition) +
   
   # Density + CrIs
-  stat_halfeye() +
+  stat_halfeye(alpha = .5) +
   
   # Rename axes
   labs(y = "Acoustic VSA (Bark)", x = "Group/Severity")
@@ -632,10 +667,10 @@ brms::get_prior(formula = brms_kinDistance_modelFormula,
 Now we can specify weakly informative priors.
 ```{r}
 priors_kinDistance <- c(
-  prior(normal(0, 1), class = Intercept),
-  prior(normal(0, 1), class = b),
-  prior(cauchy(0, 1), class = sigma),
-  prior(cauchy(0, 1), class = sd)
+  prior(normal(0, 10), class = Intercept),
+  prior(normal(0, 10), class = b),
+  prior(cauchy(0, 10), class = sigma),
+  prior(cauchy(0, 10), class = sd)
 )
 ```
 
@@ -691,14 +726,14 @@ post_kinDistance_data <- modelData %>%
 post_kinDistance_plot <- post_kinDistance_data %>%
   ggplot() +
   aes(
-    y = .epred - 1,
+    y = .epred - 1, # this - 1 removes the constant that was applied before the analysis
     x = Severity,
     group = condition,
     fill = condition
   ) +
   
   # Density + CrIs
-  stat_halfeye() +
+  stat_halfeye(alpha = .5) +
 
   # Rename axes
   labs(
