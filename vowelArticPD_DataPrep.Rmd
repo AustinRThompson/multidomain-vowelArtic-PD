@@ -16,6 +16,8 @@ library(plyr) # install.packages('plyr')
 library(PraatR) # install.packages('PraatR')
 library(beepr) # install.packages('beepr')
 library(emuR) # install.packages('emuR')
+library(datadictionary) # install.packages('datadictionary')
+library(labelled)
 source('Functions/MSL Tools.R')
 ```
 
@@ -1737,7 +1739,7 @@ aiMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_aiMe
   # Removing instances of empty rows
   dplyr::filter(!is.na(onset))
 
-rio::export(x = aiMeasures, file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
+rio::export(x = aiMeasures_labelled, file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures.csv")
   
 # VSA Measures ----
   vsaMeasures <- rio::import(file = "Data/PreppedData/CollatedData/allSpeakers_VSA.csv") %>%
@@ -1754,3 +1756,84 @@ rio::export(x = aiMeasures, file = "Data/PreppedData/CollatedData/TargetMeasures
   
   rio::export(x = vsaMeasures, file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures.csv")
 ```
+
+## Data Dictionaries
+```{r}
+library(datadictionary)
+
+# /ai/ data
+aiMeasures_labelled <-
+  labelled::set_variable_labels(
+    aiMeasures %>%
+      dplyr::mutate(
+        #DatabaseID = as.factor(DatabaseID),
+        Group = as.factor(Group),
+        Sex = as.factor(Sex),
+        condition = as.factor(condition),
+        label = as.factor(label),
+        Sent = as.factor(Sent),
+        phrase = as.factor(phrase),
+        rep = as.factor(rep)
+      ) %>%
+      dplyr::relocate(Sex, .after = Group),
+    DatabaseID = "The speaker ID in the larger database",
+    StudyID = "The speaker ID in this study",
+    Age = "The speaker age in years",
+    Group = "Parkinson's disease (PD) vs. healthy control (HC)",
+    condition = "Speaking condition: conversational (conv); less clear (lessClear); more clear (moreClear)",
+    phrase = "sentence + unique token ID",
+    Sent = "Sentence: Buy Bobby a puppy (bsent); Tess told Dan to stay fit (tsent); Carl got a croaking frog (ksent)",
+    rep = "Repetition number. Usually 1-5, some cases haad more/less.",
+    label = "Vowel segment",
+    token = "Vowel + unique token ID",
+    onset = "Onset boundary of the target vowel; measured in sec.",
+    offset = "Offset boundary of the target vowel; measured in sec.",
+    duration = "Duration of the target vowel; measured in sec.",
+    acoDistance = "The Euclidean distance between the F1–F2 coordinates taken from the F2 minimum and F2 maximum points during the segment. Measured in Hz.",
+    kinDistance = "the Euclidean distance between the 2D composite tongue back and jaw articulatory coordinates taken from the onset and offset positions (i.e., the displacement) of the segment. Measured in mm.",
+    F2_Slope = "Derived from the F2 transition extent and duration during the segment. Measured as Hz/ms.",
+    TB_speedAvg = "The average 2D speed of the TB sensor. Measured as mm/s.",
+    TB_speedMax = "The peak 2D speed of the TB sensor. Measured as mm/s.",
+    TB_distance = "The 2D path distance of the TB sensor. Measured in mm.",
+    TB_displacement = "(Same as kinDistance) the Euclidean distance between the 2D composite tongue back and jaw articulatory coordinates taken from the onset and offset positions (i.e., the displacement) of the segment. Measured in mm.",
+    Jaw_distance = "The 2D path distance of the Jaw sensor. Measured in mm.",
+    kinSpeed = "The 2D the Euclidean distance between the 2D composite tongue back and jaw articulatory coordinates taken from the onset and offset positions (i.e., the displacement) of the segment, divided by the duration of the segment. Measured in mm/s.",
+    Sex = "Sex: Male (M), Female (F)",
+    Int_M = "The average (M) intelligibility (Int) rating.",
+    Int_N = "The total number (N) intelligibility (Int) ratings used to calculate the average rating (Int_M).",
+    AP_M = "The average (M) articulatory precision (AP) rating.",
+    AP_N = "The total number (N) articulatory precision (AP) ratings used to calculate the average rating (Int_M)."
+  )
+aiMeasures_dictionary <- create_dictionary(aiMeasures_labelled,
+                                           file = "Data/PreppedData/CollatedData/TargetMeasures_aiMeasures_dictionary.xlsx")
+
+# VSA Data
+vsaMeasures_labelled <-
+  labelled::set_variable_labels(
+    vsaMeasures %>%
+      dplyr::mutate(
+        #DatabaseID = as.factor(DatabaseID),
+        Group = as.factor(Group),
+        Sex = as.factor(Sex),
+        condition = as.factor(condition)
+      ) %>%
+      dplyr::relocate(Sex, .after = Group),
+    DatabaseID = "The speaker ID in the larger database",
+    StudyID = "The speaker ID in this study",
+    Age = "The speaker age in years",
+    Group = "Parkinson's disease (PD) vs. healthy control (HC)",
+    condition = "Speaking condition: conversational (conv); less clear (lessClear); more clear (moreClear)",
+    Sex = "Sex: Male (M), Female (F)",
+    aVSA = "The area enclosed by the four corner vowels (i.e., /i, æ, ɑ, o/) in an F1–F2 space. Measured in kHz^2.",
+    aVSA_bark = "The area enclosed by the four corner vowels (i.e., /i, æ, ɑ, o/) in an Bark transformed F1–F2 space. Measured in Bark.",
+    kVSA = "The area enclosed by the four corner vowels (i.e., /i, æ, ɑ, o/) in a two-dimensional (2D) space. Movement coordinates were obtained from the temporal midpoint of the acoustic signal. Measured in mm^2.",
+    Int_M = "The average (M) intelligibility (Int) rating.",
+    Int_N = "The total number (N) intelligibility (Int) ratings used to calculate the average rating (Int_M).",
+    AP_M = "The average (M) articulatory precision (AP) rating.",
+    AP_N = "The total number (N) articulatory precision (AP) ratings used to calculate the average rating (Int_M)."
+  )
+vsaMeasures_dictionary <- create_dictionary(vsaMeasures_labelled,
+                                           file = "Data/PreppedData/CollatedData/TargetMeasures_vsaMeasures_dictionary.xlsx")
+
+```
+
